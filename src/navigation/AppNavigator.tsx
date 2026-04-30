@@ -1,9 +1,10 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-//import { Ionicons } from '@expo/vector-icons';
-import { View, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Colors } from '../lib/theme';
+import { useTheme } from '../lib/ThemeContext';
 
 import HomeScreen from '../screens/HomeScreen';
 import AddItemScreen from '../screens/AddItemScreen';
@@ -34,67 +35,82 @@ function OffersStack() {
 }
 
 export default function AppNavigator() {
+  const { theme, isDark } = useTheme();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: true,
         tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textLight,
+        tabBarInactiveTintColor: isDark ? '#6B7280' : '#9CA3AF',
         tabBarStyle: {
-          backgroundColor: Colors.white,
+          backgroundColor: theme.surface,
           borderTopWidth: 1,
-          borderTopColor: Colors.border,
-          height: 80,
-          paddingBottom: 16,
-          paddingTop: 8,
+          borderTopColor: theme.border,
+          height: Platform.OS === 'ios' ? 88 : 70,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+          paddingTop: 10,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
+          marginTop: 2,
         },
         tabBarIcon: ({ focused, color, size }) => {
-          const icons: Record<string, { active: any; inactive: any }> = {
+          const icons: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
             Home: { active: 'home', inactive: 'home-outline' },
-            AddItem: { active: 'add-circle', inactive: 'add-circle-outline' },
             Offers: { active: 'swap-horizontal', inactive: 'swap-horizontal-outline' },
             Profile: { active: 'person', inactive: 'person-outline' },
           };
           const icon = icons[route.name];
-        //  return <Ionicons name={focused ? icon.active : icon.inactive} size={size} color={color} />;
+          if (!icon) return null;
+          return <Ionicons name={focused ? icon.active : icon.inactive} size={size} color={color} />;
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeStack} options={{ tabBarLabel: 'Discover' }} />
+      <Tab.Screen
+        name="Home"
+        component={HomeStack}
+        options={{ tabBarLabel: 'Discover' }}
+      />
       <Tab.Screen
         name="AddItem"
         component={AddItemScreen}
         options={{
           tabBarLabel: 'Add Item',
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.addIcon, focused && styles.addIconActive]}>
-              {/* <Ionicons name="add" size={26} color={focused ? Colors.white : Colors.primary} /> */}
+            <View style={[styles.addIcon, { backgroundColor: focused ? Colors.primary : Colors.primaryLight }]}>
+              <Ionicons name="add" size={24} color={focused ? '#fff' : Colors.primary} />
             </View>
           ),
         }}
       />
-      <Tab.Screen name="Offers" component={OffersStack} options={{ tabBarLabel: 'Offers' }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarLabel: 'Profile' }} />
+      <Tab.Screen
+        name="Offers"
+        component={OffersStack}
+        options={{ tabBarLabel: 'Offers' }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ tabBarLabel: 'Profile' }}
+      />
     </Tab.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
   addIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.primaryLight,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
-  },
-  addIconActive: {
-    backgroundColor: Colors.primary,
   },
 });
