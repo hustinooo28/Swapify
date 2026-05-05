@@ -7,10 +7,19 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize } from '../lib/theme';
+import { useTheme } from '../lib/ThemeContext';
 
-const CATEGORIES = ['Electronics', 'Clothing', 'Books', 'Sports', 'Home', 'Other'];
+const CATEGORIES = [
+  { label: 'Electronics', icon: 'phone-portrait-outline' },
+  { label: 'Clothing',    icon: 'shirt-outline' },
+  { label: 'Books',       icon: 'book-outline' },
+  { label: 'Sports',      icon: 'football-outline' },
+  { label: 'Home',        icon: 'home-outline' },
+  { label: 'Other',       icon: 'grid-outline' },
+];
 
 export default function AddItemScreen() {
+  const { theme } = useTheme();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [estimatedValue, setEstimatedValue] = useState('');
@@ -37,81 +46,142 @@ export default function AddItemScreen() {
       if (error) throw error;
       const { data } = supabase.storage.from('item-images').getPublicUrl(fileName);
       return data.publicUrl;
-    } catch (e) { console.error('Upload error:', e); return null; }
+    } catch (e) { return null; }
   };
 
   const handleSubmit = async () => {
-    if (!title || !description || !estimatedValue || !category) { Alert.alert('Missing fields', 'Please fill in all required fields and select a category.'); return; }
+    if (!title || !description || !estimatedValue || !category) { Alert.alert('Missing fields', 'Please fill in all fields and select a category.'); return; }
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setLoading(false); Alert.alert('Error', 'Not logged in.'); return; }
+    if (!user) { setLoading(false); return; }
     const imageUrl = await uploadImage(user.id);
     const { error } = await supabase.from('items').insert({ user_id: user.id, title: title.trim(), description: description.trim(), estimated_value: parseFloat(estimatedValue), category, image_url: imageUrl || '', status: 'available' });
     setLoading(false);
-    if (error) { Alert.alert('Error', 'Could not add item. Please try again.'); return; }
-    Alert.alert('Item Added!', 'Your item is now listed.', [{ text: 'OK', onPress: () => { setTitle(''); setDescription(''); setEstimatedValue(''); setCategory(''); setImageUri(null); } }]);
+    if (error) { Alert.alert('Error', 'Could not add item.'); return; }
+    Alert.alert('🎉 Listed!', 'Your item is now live on the marketplace.', [{ text: 'OK', onPress: () => { setTitle(''); setDescription(''); setEstimatedValue(''); setCategory(''); setImageUri(null); } }]);
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
-        <Text style={styles.header}>List an Item</Text>
-        <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
-          {imageUri ? <Image source={{ uri: imageUri }} style={styles.previewImage} /> : (
-            <View style={styles.imagePlaceholder}>
-              <Ionicons name="camera-outline" size={36} color={Colors.textLight} />
-              <Text style={styles.imagePlaceholderText}>Tap to add photo</Text>
+    <KeyboardAvoidingView style={[styles.container, { backgroundColor: theme.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* Header */}
+        <View style={[styles.header, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>List an Item</Text>
+          <Text style={[styles.headerSub, { color: theme.textSecondary }]}>Share what you want to trade</Text>
+        </View>
+
+        <View style={styles.body}>
+          {/* Image Picker */}
+          <TouchableOpacity style={[styles.imagePicker, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={pickImage} activeOpacity={0.8}>
+            {imageUri ? (
+              <>
+                <Image source={{ uri: imageUri }} style={styles.previewImage} />
+                <View style={styles.imageOverlay}>
+                  <Ionicons name="camera" size={24} color="#fff" />
+                  <Text style={styles.imageOverlayText}>Change Photo</Text>
+                </View>
+              </>
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <View style={[styles.cameraCircle, { backgroundColor: Colors.primaryLight }]}>
+                  <Ionicons name="camera-outline" size={28} color={Colors.primary} />
+                </View>
+                <Text style={[styles.imagePlaceholderTitle, { color: theme.text }]}>Add Photo</Text>
+                <Text style={[styles.imagePlaceholderSub, { color: theme.textSecondary }]}>Tap to upload from gallery</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Title */}
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.fieldLabel, { color: theme.text }]}>Item Title</Text>
+            <View style={[styles.inputWrapper, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Ionicons name="pricetag-outline" size={18} color={theme.textLight} style={styles.inputIcon} />
+              <TextInput style={[styles.input, { color: theme.text }]} placeholder="e.g. iPhone 13 Pro" placeholderTextColor={theme.textLight} value={title} onChangeText={setTitle} />
             </View>
-          )}
-        </TouchableOpacity>
-        <View style={styles.field}>
-          <Text style={styles.label}>Title *</Text>
-          <TextInput style={styles.input} placeholder="e.g. iPhone 13 Pro" placeholderTextColor={Colors.textLight} value={title} onChangeText={setTitle} />
-        </View>
-        <View style={styles.field}>
-          <Text style={styles.label}>Description *</Text>
-          <TextInput style={[styles.input, styles.textArea]} placeholder="Describe your item's condition, details, etc." placeholderTextColor={Colors.textLight} value={description} onChangeText={setDescription} multiline numberOfLines={4} textAlignVertical="top" />
-        </View>
-        <View style={styles.field}>
-          <Text style={styles.label}>Estimated Value (₱) *</Text>
-          <TextInput style={styles.input} placeholder="e.g. 5000" placeholderTextColor={Colors.textLight} value={estimatedValue} onChangeText={setEstimatedValue} keyboardType="numeric" />
-        </View>
-        <View style={styles.field}>
-          <Text style={styles.label}>Category *</Text>
-          <View style={styles.categories}>
-            {CATEGORIES.map((cat) => (
-              <TouchableOpacity key={cat} style={[styles.catChip, category === cat && styles.catChipActive]} onPress={() => setCategory(cat)}>
-                <Text style={[styles.catText, category === cat && styles.catTextActive]}>{cat}</Text>
-              </TouchableOpacity>
-            ))}
           </View>
+
+          {/* Description */}
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.fieldLabel, { color: theme.text }]}>Description</Text>
+            <View style={[styles.inputWrapper, styles.textAreaWrapper, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <TextInput style={[styles.input, styles.textArea, { color: theme.text }]} placeholder="Describe condition, specs, and what you're looking for..." placeholderTextColor={theme.textLight} value={description} onChangeText={setDescription} multiline numberOfLines={4} textAlignVertical="top" />
+            </View>
+          </View>
+
+          {/* Value */}
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.fieldLabel, { color: theme.text }]}>Estimated Value</Text>
+            <View style={[styles.inputWrapper, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.currencyPrefix, { color: theme.textSecondary }]}>₱</Text>
+              <TextInput style={[styles.input, { color: theme.text }]} placeholder="0" placeholderTextColor={theme.textLight} value={estimatedValue} onChangeText={setEstimatedValue} keyboardType="numeric" />
+            </View>
+          </View>
+
+          {/* Category */}
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.fieldLabel, { color: theme.text }]}>Category</Text>
+            <View style={styles.categoryGrid}>
+              {CATEGORIES.map((cat) => {
+                const selected = category === cat.label;
+                return (
+                  <TouchableOpacity
+                    key={cat.label}
+                    style={[styles.catCard, { backgroundColor: selected ? Colors.primary : theme.card, borderColor: selected ? Colors.primary : theme.border }]}
+                    onPress={() => setCategory(cat.label)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name={cat.icon as any} size={22} color={selected ? '#fff' : theme.textSecondary} />
+                    <Text style={[styles.catCardText, { color: selected ? '#fff' : theme.textSecondary }]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Submit */}
+          <TouchableOpacity style={[styles.submitBtn, loading && styles.btnDisabled]} onPress={handleSubmit} disabled={loading}>
+            {loading ? <ActivityIndicator color="#fff" /> : (
+              <>
+                <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                <Text style={styles.submitBtnText}>List Item</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={[styles.submitBtn, loading && styles.submitBtnDisabled]} onPress={handleSubmit} disabled={loading}>
-          {loading ? <ActivityIndicator color={Colors.white} /> : (<><Ionicons name="add-circle-outline" size={20} color={Colors.white} /><Text style={styles.submitBtnText}>List Item</Text></>)}
-        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  scroll: { padding: Spacing.lg, paddingTop: 60, paddingBottom: 40 },
-  header: { fontSize: FontSize.xxl, fontWeight: '800', color: Colors.text, marginBottom: Spacing.lg },
-  imagePicker: { width: '100%', height: 200, borderRadius: BorderRadius.lg, overflow: 'hidden', marginBottom: Spacing.lg, backgroundColor: Colors.white, borderWidth: 2, borderColor: Colors.border, borderStyle: 'dashed' },
+  container: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+  header: { paddingTop: 56, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg },
+  headerTitle: { fontSize: FontSize.xxl, fontWeight: '800', letterSpacing: -0.3 },
+  headerSub: { fontSize: FontSize.sm, marginTop: 2 },
+  body: { padding: Spacing.lg },
+  imagePicker: { width: '100%', height: 200, borderRadius: BorderRadius.xl, overflow: 'hidden', borderWidth: 1.5, borderStyle: 'dashed', marginBottom: Spacing.lg },
   previewImage: { width: '100%', height: '100%' },
-  imagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  imagePlaceholderText: { fontSize: FontSize.sm, color: Colors.textLight, marginTop: 8 },
-  field: { marginBottom: Spacing.md },
-  label: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.text, marginBottom: 6 },
-  input: { backgroundColor: Colors.white, borderRadius: BorderRadius.md, padding: Spacing.md, fontSize: FontSize.md, color: Colors.text, borderWidth: 1, borderColor: Colors.border },
-  textArea: { height: 100 },
-  categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  catChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: BorderRadius.full, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border },
-  catChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  catText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: '600' },
-  catTextActive: { color: Colors.white },
-  submitBtn: { backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: Spacing.md, borderRadius: BorderRadius.md, marginTop: Spacing.md },
-  submitBtnDisabled: { opacity: 0.6 },
-  submitBtnText: { color: Colors.white, fontSize: FontSize.md, fontWeight: '700' },
+  imageOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', paddingVertical: 10, gap: 2 },
+  imageOverlayText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '600' },
+  imagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  cameraCircle: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  imagePlaceholderTitle: { fontSize: FontSize.md, fontWeight: '700' },
+  imagePlaceholderSub: { fontSize: FontSize.xs },
+  fieldGroup: { marginBottom: Spacing.md },
+  fieldLabel: { fontSize: FontSize.sm, fontWeight: '700', marginBottom: 8 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', borderRadius: BorderRadius.md, borderWidth: 1, paddingHorizontal: 14 },
+  inputIcon: { marginRight: 8 },
+  input: { flex: 1, paddingVertical: 14, fontSize: FontSize.sm },
+  textAreaWrapper: { alignItems: 'flex-start', paddingVertical: 12 },
+  textArea: { height: 100, paddingVertical: 0 },
+  currencyPrefix: { fontSize: FontSize.md, fontWeight: '700', marginRight: 4 },
+  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  catCard: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: BorderRadius.md, borderWidth: 1.5 },
+  catCardText: { fontSize: FontSize.sm, fontWeight: '600' },
+  submitBtn: { backgroundColor: Colors.primary, borderRadius: BorderRadius.md, padding: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: Spacing.sm, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  btnDisabled: { opacity: 0.6 },
+  submitBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
 });

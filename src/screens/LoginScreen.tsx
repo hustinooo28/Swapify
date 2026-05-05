@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize } from '../lib/theme';
 import {
-  isBiometricsAvailable,
-  getBiometricsEnabled,
+  isBiometricsAvailable, getBiometricsEnabled,
   authenticateWithBiometrics,
 } from '../lib/biometrics';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -22,10 +21,9 @@ export default function LoginScreen({ onToggle }: Props) {
   const [showBiometricBtn, setShowBiometricBtn] = useState(false);
   const [isFaceID, setIsFaceID] = useState(false);
   const [bioLoading, setBioLoading] = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
-  useEffect(() => {
-    checkBiometricOption();
-  }, []);
+  useEffect(() => { checkBiometricOption(); }, []);
 
   const checkBiometricOption = async () => {
     const available = await isBiometricsAvailable();
@@ -38,10 +36,7 @@ export default function LoginScreen({ onToggle }: Props) {
   };
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields.');
-      return;
-    }
+    if (!email || !password) { Alert.alert('Error', 'Please fill in all fields.'); return; }
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
@@ -50,50 +45,49 @@ export default function LoginScreen({ onToggle }: Props) {
 
   const handleBiometricLogin = async () => {
     setBioLoading(true);
-    // Small delay to let iOS UI settle
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(r => setTimeout(r, 300));
     const success = await authenticateWithBiometrics();
     setBioLoading(false);
-
     if (success) {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        Alert.alert(
-          'Session Expired',
-          'Your session has expired. Please log in with email and password once to restore it.',
-        );
-      }
-      // If session is valid, auth state updates automatically and app navigates in
+      if (!session) Alert.alert('Session Expired', 'Please log in with your email and password once to restore your session.');
     } else {
-      Alert.alert('Try Again', 'Biometric verification was not successful. You can still log in with your email and password.');
+      Alert.alert('Try Again', 'Biometric verification was not successful.');
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>S</Text>
-          </View>
-          <Text style={styles.appName}>Swapify</Text>
-          <Text style={styles.tagline}>Trade what you have. Get what you need.</Text>
+        {/* Top decoration */}
+        <View style={styles.topDecor}>
+          <View style={styles.decorCircle1} />
+          <View style={styles.decorCircle2} />
         </View>
 
-        {/* Form */}
-        <View style={styles.form}>
-          <Text style={styles.title}>Welcome back</Text>
+        {/* Logo */}
+        <View style={styles.logoSection}>
+          <View style={styles.logoCircle}>
+            <Ionicons name="swap-horizontal" size={32} color="#fff" />
+          </View>
+          <Text style={styles.appName}>Swapify</Text>
+          <Text style={styles.tagline}>Trade what you have.{'\n'}Get what you need.</Text>
+        </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email</Text>
+        {/* Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Welcome back</Text>
+          <Text style={styles.cardSub}>Sign in to continue trading</Text>
+
+          {/* Email */}
+          <View style={styles.inputWrapper}>
+            <View style={styles.inputIcon}>
+              <Ionicons name="mail-outline" size={18} color={Colors.textLight} />
+            </View>
             <TextInput
               style={styles.input}
-              placeholder="you@example.com"
+              placeholder="Email address"
               placeholderTextColor={Colors.textLight}
               keyboardType="email-address"
               autoCapitalize="none"
@@ -102,30 +96,30 @@ export default function LoginScreen({ onToggle }: Props) {
             />
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
+          {/* Password */}
+          <View style={styles.inputWrapper}>
+            <View style={styles.inputIcon}>
+              <Ionicons name="lock-closed-outline" size={18} color={Colors.textLight} />
+            </View>
             <TextInput
-              style={styles.input}
-              placeholder="••••••••"
+              style={[styles.input, { paddingRight: 44 }]}
+              placeholder="Password"
               placeholderTextColor={Colors.textLight}
-              secureTextEntry
+              secureTextEntry={!showPass}
               value={password}
               onChangeText={setPassword}
             />
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPass(!showPass)}>
+              <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color={Colors.textLight} />
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading
-              ? <ActivityIndicator color={Colors.white} />
-              : <Text style={styles.buttonText}>Log In</Text>
-            }
+          {/* Login Button */}
+          <TouchableOpacity style={[styles.primaryBtn, loading && styles.btnDisabled]} onPress={handleLogin} disabled={loading}>
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Sign In</Text>}
           </TouchableOpacity>
 
-          {/* Biometric option — only shown if user enabled it in settings */}
+          {/* Biometric */}
           {showBiometricBtn && (
             <>
               <View style={styles.divider}>
@@ -133,24 +127,11 @@ export default function LoginScreen({ onToggle }: Props) {
                 <Text style={styles.dividerText}>or</Text>
                 <View style={styles.dividerLine} />
               </View>
-
-              <TouchableOpacity
-                style={[styles.biometricBtn, bioLoading && styles.buttonDisabled]}
-                onPress={handleBiometricLogin}
-                disabled={bioLoading}
-              >
-                {bioLoading ? (
-                  <ActivityIndicator color={Colors.primary} />
-                ) : (
+              <TouchableOpacity style={[styles.bioBtn, bioLoading && styles.btnDisabled]} onPress={handleBiometricLogin} disabled={bioLoading}>
+                {bioLoading ? <ActivityIndicator color={Colors.primary} /> : (
                   <>
-                    <Ionicons
-                      name={isFaceID ? 'scan-outline' : 'finger-print-outline'}
-                      size={22}
-                      color={Colors.primary}
-                    />
-                    <Text style={styles.biometricBtnText}>
-                      {isFaceID ? 'Sign in with Face ID' : 'Sign in with Fingerprint'}
-                    </Text>
+                    <Ionicons name={isFaceID ? 'scan-outline' : 'finger-print-outline'} size={20} color={Colors.primary} />
+                    <Text style={styles.bioBtnText}>{isFaceID ? 'Sign in with Face ID' : 'Sign in with Fingerprint'}</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -159,9 +140,7 @@ export default function LoginScreen({ onToggle }: Props) {
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={onToggle}>
-              <Text style={styles.link}>Sign Up</Text>
-            </TouchableOpacity>
+            <TouchableOpacity onPress={onToggle}><Text style={styles.footerLink}>Sign Up</Text></TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -170,27 +149,31 @@ export default function LoginScreen({ onToggle }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: Spacing.lg },
-  logoContainer: { alignItems: 'center', marginBottom: Spacing.xl },
-  logoCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.sm },
-  logoText: { fontSize: 36, fontWeight: '800', color: Colors.white },
-  appName: { fontSize: FontSize.xxxl, fontWeight: '800', color: Colors.text, letterSpacing: -0.5 },
-  tagline: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
-  form: { backgroundColor: Colors.white, borderRadius: BorderRadius.xl, padding: Spacing.lg, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 4 },
-  title: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.text, marginBottom: Spacing.lg },
-  inputGroup: { marginBottom: Spacing.md },
-  label: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.text, marginBottom: 6 },
-  input: { backgroundColor: Colors.borderLight, borderRadius: BorderRadius.md, padding: Spacing.md, fontSize: FontSize.md, color: Colors.text, borderWidth: 1, borderColor: Colors.border },
-  button: { backgroundColor: Colors.primary, borderRadius: BorderRadius.md, padding: Spacing.md, alignItems: 'center', marginTop: Spacing.sm },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: Colors.white, fontSize: FontSize.md, fontWeight: '700' },
+  container: { flex: 1, backgroundColor: '#F0F4FF' },
+  scroll: { flexGrow: 1 },
+  topDecor: { position: 'absolute', top: 0, left: 0, right: 0, height: 280, overflow: 'hidden' },
+  decorCircle1: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: Colors.primary, top: -120, left: -60, opacity: 0.12 },
+  decorCircle2: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: Colors.primary, top: -60, right: -40, opacity: 0.08 },
+  logoSection: { alignItems: 'center', paddingTop: 80, paddingBottom: 32 },
+  logoCircle: { width: 72, height: 72, borderRadius: 24, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
+  appName: { fontSize: 28, fontWeight: '800', color: Colors.text, letterSpacing: -0.5 },
+  tagline: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 6, textAlign: 'center', lineHeight: 20 },
+  card: { backgroundColor: '#fff', marginHorizontal: Spacing.lg, borderRadius: 28, padding: Spacing.lg, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
+  cardTitle: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.text, marginBottom: 4 },
+  cardSub: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.lg },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7F9FC', borderRadius: BorderRadius.md, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12, position: 'relative' },
+  inputIcon: { paddingLeft: 14, paddingRight: 4 },
+  input: { flex: 1, paddingVertical: 14, paddingRight: 14, fontSize: FontSize.sm, color: Colors.text },
+  eyeBtn: { position: 'absolute', right: 14 },
+  primaryBtn: { backgroundColor: Colors.primary, borderRadius: BorderRadius.md, padding: 15, alignItems: 'center', marginTop: 4, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  btnDisabled: { opacity: 0.6 },
+  primaryBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: Spacing.md },
-  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  dividerText: { marginHorizontal: 12, fontSize: FontSize.sm, color: Colors.textLight },
-  biometricBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: Spacing.md, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.primary, backgroundColor: Colors.primaryLight },
-  biometricBtnText: { color: Colors.primary, fontSize: FontSize.md, fontWeight: '700' },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#E5E7EB' },
+  dividerText: { marginHorizontal: 12, fontSize: FontSize.xs, color: Colors.textLight },
+  bioBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 14, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.primary, backgroundColor: Colors.primaryLight },
+  bioBtnText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.lg },
   footerText: { color: Colors.textSecondary, fontSize: FontSize.sm },
-  link: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
+  footerLink: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
 });

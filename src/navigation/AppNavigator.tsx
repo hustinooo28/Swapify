@@ -21,6 +21,7 @@ function HomeStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="HomeMain" component={HomeScreen} />
       <Stack.Screen name="ItemDetail" component={ItemDetailScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
     </Stack.Navigator>
   );
 }
@@ -39,7 +40,7 @@ export default function AppNavigator() {
 
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,
         tabBarActiveTintColor: Colors.primary,
@@ -48,69 +49,58 @@ export default function AppNavigator() {
           backgroundColor: theme.surface,
           borderTopWidth: 1,
           borderTopColor: theme.border,
-          height: Platform.OS === 'ios' ? 88 : 70,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-          paddingTop: 10,
-          elevation: 8,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
+          height: Platform.OS === 'ios' ? 84 : 64,
+          paddingTop: 8,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 8,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
-          marginTop: 2,
         },
-        tabBarIcon: ({ focused, color, size }) => {
-          const icons: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
-            Home: { active: 'home', inactive: 'home-outline' },
-            Offers: { active: 'swap-horizontal', inactive: 'swap-horizontal-outline' },
-            Profile: { active: 'person', inactive: 'person-outline' },
-          };
-          const icon = icons[route.name];
-          if (!icon) return null;
-          return <Ionicons name={focused ? icon.active : icon.inactive} size={size} color={color} />;
-        },
-      })}
+      }}
     >
       <Tab.Screen
         name="Home"
         component={HomeStack}
-        options={{ tabBarLabel: 'Discover' }}
+        options={{
+          tabBarLabel: 'Marketplace',
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? 'storefront' : 'storefront-outline'} size={22} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
         name="AddItem"
         component={AddItemScreen}
         options={{
           tabBarLabel: 'Add Item',
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.addIcon, { backgroundColor: focused ? Colors.primary : Colors.primaryLight }]}>
-              <Ionicons name="add" size={24} color={focused ? '#fff' : Colors.primary} />
-            </View>
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? 'add-circle' : 'add-circle-outline'} size={26} color={focused ? Colors.primary : color} />
           ),
         }}
       />
       <Tab.Screen
         name="Offers"
         component={OffersStack}
-        options={{ tabBarLabel: 'Offers' }}
+        options={{
+          tabBarLabel: 'Messages',
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? 'chatbubbles' : 'chatbubbles-outline'} size={22} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ tabBarLabel: 'Profile' }}
+        options={{
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
+          ),
+        }}
       />
     </Tab.Navigator>
   );
 }
 
-const styles = StyleSheet.create({
-  addIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+const styles = StyleSheet.create({});
