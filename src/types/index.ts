@@ -4,6 +4,9 @@ export type User = {
   full_name: string;
   avatar_url?: string;
   location?: string;
+  address?: string;
+  phone?: string;
+  biometric_enabled?: boolean;
   created_at: string;
 };
 

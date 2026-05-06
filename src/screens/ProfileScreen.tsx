@@ -5,6 +5,7 @@ import {
   Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Item, User } from '../types';
 import { Colors, Spacing, BorderRadius, FontSize } from '../lib/theme';
@@ -26,6 +27,7 @@ export default function ProfileScreen() {
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
   const [biometricsEnabled, setBiometricsEnabledState] = useState(false);
   const [isFaceID, setIsFaceID] = useState(false);
+  const navigation = useNavigation<any>();
 
   // Delete account modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -190,13 +192,51 @@ export default function ProfileScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchProfile(); }} tintColor={Colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
+    {/* Header */}
         <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{(profile?.full_name || 'U')[0].toUpperCase()}</Text>
-          </View>
+          {/* Edit button */}
+          <TouchableOpacity
+            style={[styles.editProfileBtn, { backgroundColor: theme.background }]}
+            onPress={() => navigation.navigate('EditProfile', { profile })}
+          >
+            <Ionicons name="create-outline" size={18} color={Colors.primary} />
+            <Text style={styles.editProfileBtnText}>Edit</Text>
+          </TouchableOpacity>
+
+          {/* Avatar */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('EditProfile', { profile })}
+            style={styles.avatarWrapper}
+          >
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{(profile?.full_name || 'U')[0].toUpperCase()}</Text>
+              </View>
+            )}
+            <View style={styles.avatarBadge}>
+              <Ionicons name="camera" size={12} color="#fff" />
+            </View>
+          </TouchableOpacity>
+
           <Text style={[styles.name, { color: theme.text }]}>{profile?.full_name || 'User'}</Text>
           <Text style={[styles.email, { color: theme.textSecondary }]}>{profile?.email}</Text>
+
+          {/* Address & Phone if set */}
+          {profile?.address ? (
+            <View style={styles.infoRow}>
+              <Ionicons name="location-outline" size={13} color={theme.textLight} />
+              <Text style={[styles.infoText, { color: theme.textSecondary }]}>{profile.address}</Text>
+            </View>
+          ) : null}
+          {profile?.phone ? (
+            <View style={styles.infoRow}>
+              <Ionicons name="call-outline" size={13} color={theme.textLight} />
+              <Text style={[styles.infoText, { color: theme.textSecondary }]}>{profile.phone}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.stats}>
             {statsData.map((s) => (
               <View key={s.label} style={styles.statItem}>
@@ -206,7 +246,7 @@ export default function ProfileScreen() {
             ))}
           </View>
         </View>
-
+        
         {/* My Items */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>My Listings</Text>
@@ -228,11 +268,19 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                 </View>
-                <View style={styles.itemActions}>
+              <View style={styles.itemActions}>
                   {item.status !== 'traded' && (
-                    <TouchableOpacity onPress={() => handleMarkTraded(item.id)} style={styles.actionBtn}>
-                      <Ionicons name="checkmark-circle-outline" size={22} color={Colors.success} />
-                    </TouchableOpacity>
+                    <>
+                      <TouchableOpacity
+                        onPress={() => navigation.navigate('EditItem', { item })}
+                        style={styles.actionBtn}
+                      >
+                        <Ionicons name="create-outline" size={20} color={Colors.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleMarkTraded(item.id)} style={styles.actionBtn}>
+                        <Ionicons name="checkmark-circle-outline" size={22} color={Colors.success} />
+                      </TouchableOpacity>
+                    </>
                   )}
                   <TouchableOpacity onPress={() => handleDeleteItem(item.id)} style={styles.actionBtn}>
                     <Ionicons name="trash-outline" size={20} color={Colors.error} />
@@ -433,6 +481,13 @@ const styles = StyleSheet.create({
   deleteRow: { backgroundColor: Colors.error + '10' },
   actionRowText: { fontSize: FontSize.md, fontWeight: '600', flex: 1 },
   chevron: { marginLeft: 'auto' },
+  avatarWrapper: { position: 'relative', marginBottom: Spacing.sm },
+  avatarImage: { width: 80, height: 80, borderRadius: 40 },
+  avatarBadge: { position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
+  editProfileBtn: { position: 'absolute', top: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.full },
+  editProfileBtnText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '700' },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  infoText: { fontSize: FontSize.xs },
 
   // Modal
   modalContainer: { flex: 1 },

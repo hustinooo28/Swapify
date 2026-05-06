@@ -12,6 +12,8 @@ import OffersScreen from '../screens/OffersScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ItemDetailScreen from '../screens/ItemDetailScreen';
 import ChatScreen from '../screens/ChatScreen';
+import EditItemScreen from '../screens/EditItemScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -22,9 +24,22 @@ function HomeStack() {
       <Stack.Screen name="HomeMain" component={HomeScreen} />
       <Stack.Screen name="ItemDetail" component={ItemDetailScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="EditItem" component={EditItemScreen} />
     </Stack.Navigator>
   );
 }
+
+function ProfileStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="ProfileMain" component={ProfileScreen} />
+      <Stack.Screen name="EditItem" component={EditItemScreen} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+    </Stack.Navigator>
+  );
+}
+
+
 
 function OffersStack() {
   return (
@@ -91,7 +106,7 @@ export default function AppNavigator() {
       />
       <Tab.Screen
         name="Profile"
-        component={ProfileScreen}
+        component={ProfileStack}
         options={{
           tabBarLabel: 'Profile',
           tabBarIcon: ({ focused, color }) => (

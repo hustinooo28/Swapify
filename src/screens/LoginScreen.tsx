@@ -35,12 +35,16 @@ export default function LoginScreen({ onToggle }: Props) {
     }
   };
 
-  const handleLogin = async () => {
-    if (!email || !password) { Alert.alert('Error', 'Please fill in all fields.'); return; }
+const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields.');
+      return;
+    }
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) Alert.alert('Login Failed', error.message);
+    // Generic error — never expose specific auth failure reasons
+    if (error) Alert.alert('Login Failed', 'Invalid credentials. Please try again.');
   };
 
   const handleBiometricLogin = async () => {
