@@ -18,6 +18,7 @@ export type Item = {
   estimated_value: number;
   image_url: string;
   category: string;
+  condition: 'Brand New' | 'Like New' | 'Good' | 'Fair' | 'Poor';
   status: 'available' | 'pending' | 'traded';
   created_at: string;
   user?: User;

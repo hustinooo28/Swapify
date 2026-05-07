@@ -12,6 +12,9 @@ import {
   isBiometricsAvailable, authenticateWithBiometrics, setBiometricsEnabled,
 } from '../lib/biometrics';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { useEffect } from 'react';
+import LocationPicker from '../components/LocationPicker';
+
 
 type Props = {
   onToggle: () => void;
@@ -19,6 +22,144 @@ type Props = {
 };
 
 type Step = 'form' | 'photo' | 'biometrics';
+
+// ── Auto-triggering biometric registration component ──
+function BiometricRegisterStep({
+  isFaceID,
+  onDone,
+}: {
+  isFaceID: boolean;
+  onDone: (success: boolean) => void;
+}) {
+  const [status, setStatus] = useState<'idle' | 'scanning' | 'success' | 'failed'>('idle');
+
+  useEffect(() => {
+    // Auto trigger after short delay so screen renders first
+    const timer = setTimeout(() => triggerScan(), 800);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const triggerScan = async () => {
+    setStatus('scanning');
+    await new Promise(r => setTimeout(r, 400));
+    const success = await authenticateWithBiometrics();
+    setStatus(success ? 'success' : 'failed');
+    if (success) {
+      // Short pause to show success state then continue
+      setTimeout(() => onDone(true), 1000);
+    }
+  };
+
+  const icon = () => {
+    if (status === 'success') return <Ionicons name="checkmark-circle" size={56} color={Colors.success} />;
+    if (status === 'failed') return <Ionicons name="close-circle" size={56} color={Colors.error} />;
+    return (
+      <Ionicons
+        name={isFaceID ? 'scan-outline' : 'finger-print-outline'}
+        size={56}
+        color={Colors.primary}
+      />
+    );
+  };
+
+  const circleColor = () => {
+    if (status === 'success') return Colors.success + '18';
+    if (status === 'failed') return Colors.error + '18';
+    return Colors.primaryLight;
+  };
+
+  const title = () => {
+    if (status === 'scanning') return isFaceID ? 'Look at your camera' : 'Place your finger';
+    if (status === 'success') return 'All set!';
+    if (status === 'failed') return 'Not recognized';
+    return isFaceID ? 'Setting up Face ID' : 'Setting up Fingerprint';
+  };
+
+  const subtitle = () => {
+    if (status === 'scanning') return isFaceID ? 'Position your face in front of the camera' : 'Keep your finger on the sensor';
+    if (status === 'success') return 'Biometrics registered successfully. You can now log in with your face.';
+    if (status === 'failed') return 'We couldn\'t register your biometrics. You can try again or skip and enable it later in Settings.';
+    return isFaceID ? 'We\'ll use Face ID to keep your account secure' : 'We\'ll use your fingerprint to keep your account secure';
+  };
+
+  return (
+    <View style={bioStyles.container}>
+      <View style={bioStyles.topDecor}>
+        <View style={bioStyles.circle1} />
+        <View style={bioStyles.circle2} />
+      </View>
+
+      <View style={bioStyles.card}>
+        {/* Progress dots */}
+        <View style={bioStyles.dotsRow}>
+          <View style={[bioStyles.dot, bioStyles.dotDone]} />
+          <View style={bioStyles.line} />
+          <View style={[bioStyles.dot, bioStyles.dotDone]} />
+          <View style={bioStyles.line} />
+          <View style={[bioStyles.dot, bioStyles.dotActive]} />
+        </View>
+
+        {/* Animated icon */}
+        <View style={[bioStyles.iconCircle, { backgroundColor: circleColor() }]}>
+          {status === 'scanning' ? (
+            <ActivityIndicator size="large" color={Colors.primary} />
+          ) : (
+            icon()
+          )}
+        </View>
+
+        <Text style={bioStyles.title}>{title()}</Text>
+        <Text style={bioStyles.subtitle}>{subtitle()}</Text>
+
+        {/* Actions */}
+        {status === 'failed' && (
+          <View style={bioStyles.actions}>
+            <TouchableOpacity
+              style={bioStyles.retryBtn}
+              onPress={triggerScan}
+            >
+              <Ionicons name={isFaceID ? 'scan-outline' : 'finger-print-outline'} size={18} color="#fff" />
+              <Text style={bioStyles.retryBtnText}>Try Again</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={bioStyles.skipBtn}
+              onPress={() => onDone(false)}
+            >
+              <Text style={bioStyles.skipText}>Skip for now</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {status === 'idle' && (
+          <TouchableOpacity style={bioStyles.retryBtn} onPress={triggerScan}>
+            <Text style={bioStyles.retryBtnText}>Start</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const bioStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F0F4FF', alignItems: 'center', justifyContent: 'center', padding: Spacing.lg },
+  topDecor: { position: 'absolute', top: 0, left: 0, right: 0, height: 200, overflow: 'hidden' },
+  circle1: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: Colors.primary, top: -140, left: -60, opacity: 0.1 },
+  circle2: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: Colors.primary, top: -60, right: -30, opacity: 0.07 },
+  card: { backgroundColor: '#fff', borderRadius: 28, padding: Spacing.xl, alignItems: 'center', width: '100%', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
+  dotsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.xl, alignSelf: 'stretch', justifyContent: 'center' },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.border },
+  dotActive: { backgroundColor: Colors.primary, width: 24, borderRadius: 5 },
+  dotDone: { backgroundColor: Colors.success },
+  line: { flex: 1, height: 2, backgroundColor: Colors.border, maxWidth: 40 },
+  iconCircle: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg, borderWidth: 2, borderColor: 'transparent' },
+  title: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.text, textAlign: 'center', marginBottom: 8 },
+  subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: Spacing.xl },
+  actions: { width: '100%', gap: 10 },
+  retryBtn: { backgroundColor: Colors.primary, borderRadius: BorderRadius.md, padding: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, width: '100%', shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  retryBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+  skipBtn: { alignItems: 'center', padding: Spacing.md },
+  skipText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
+});
 
 export default function RegisterScreen({ onToggle, onRegistered }: Props) {
   const [step, setStep] = useState<Step>('form');
@@ -83,20 +224,27 @@ export default function RegisterScreen({ onToggle, onRegistered }: Props) {
   };
 
   // ── Upload avatar to Supabase storage ──
-  const uploadAvatar = async (userId: string): Promise<string | null> => {
+const uploadAvatar = async (userId: string): Promise<string | null> => {
     if (!avatarUri) return null;
     try {
-      const ext = avatarUri.split('.').pop() || 'jpg';
-      const fileName = `avatar_${userId}.${ext}`;
+      const ext = (avatarUri.split('.').pop() || 'jpg').split('?')[0];
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+      const fileName = `${userId}/avatar.${safeExt}`;
       const response = await fetch(avatarUri);
       const blob = await response.blob();
       const arrayBuffer = await new Response(blob).arrayBuffer();
       const { error } = await supabase.storage
         .from('avatars')
-        .upload(fileName, arrayBuffer, { contentType: `image/${ext}`, upsert: true });
-      if (error) throw error;
+        .upload(fileName, arrayBuffer, {
+          contentType: `image/${safeExt}`,
+          upsert: true,
+        });
+      if (error) {
+        console.error('Storage upload error:', error.message);
+        return null;
+      }
       const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      return data.publicUrl;
+      return `${data.publicUrl}?t=${Date.now()}`; // cache bust
     } catch (e) {
       return null;
     }
@@ -142,47 +290,36 @@ export default function RegisterScreen({ onToggle, onRegistered }: Props) {
     setStep('photo');
   };
 
-  // ── Step 2: Save photo and continue ──
-  const handlePhotoNext = async () => {
+ const handlePhotoNext = async () => {
     if (!registeredUserId) return;
+    setUploadingPhoto(true);
 
     if (avatarUri) {
-      setUploadingPhoto(true);
       const avatarUrl = await uploadAvatar(registeredUserId);
       if (avatarUrl) {
-        await supabase.from('profiles')
-          .update({ avatar_url: avatarUrl })
-          .eq('id', registeredUserId);
+        // Use upsert to make sure it saves even if row exists
+        const { error } = await supabase
+          .from('profiles')
+          .upsert({
+            id: registeredUserId,
+            avatar_url: avatarUrl,
+          }, { onConflict: 'id' });
+        if (error) console.error('Avatar save error:', error.message);
       }
-      setUploadingPhoto(false);
     }
+
+    setUploadingPhoto(false);
 
     // Check biometrics
     const available = await isBiometricsAvailable();
     if (available) {
       const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-      setIsFaceID(types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION));
+      setIsFaceID(
+        types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)
+      );
       setStep('biometrics');
     } else {
       if (onRegistered) onRegistered(email);
-    }
-  };
-
-  // ── Step 3: Biometrics ──
-  const handleEnableBiometrics = async () => {
-    setBioLoading(true);
-    await new Promise(r => setTimeout(r, 500));
-    const success = await authenticateWithBiometrics();
-    setBioLoading(false);
-    if (success) {
-      await setBiometricsEnabled(true);
-      Alert.alert('✅ All Set!', `${isFaceID ? 'Face ID' : 'Fingerprint'} registered.`, [
-        { text: "Continue", onPress: () => { if (onRegistered) onRegistered(email); } },
-      ]);
-    } else {
-      Alert.alert('Skipped', 'You can enable biometrics later in Profile > Settings.', [
-        { text: 'OK', onPress: () => { if (onRegistered) onRegistered(email); } },
-      ]);
     }
   };
 
@@ -248,51 +385,21 @@ export default function RegisterScreen({ onToggle, onRegistered }: Props) {
   }
 
   // ────────────────────────────────────────
-  // STEP: BIOMETRICS
+  // STEP: BIOMETRICS — auto triggers on mount
   // ────────────────────────────────────────
   if (step === 'biometrics') {
     return (
-      <View style={styles.stepContainer}>
-        <View style={styles.topDecor}>
-          <View style={styles.decorCircle1} />
-          <View style={styles.decorCircle2} />
-        </View>
-        <View style={styles.stepCard}>
-          <View style={styles.stepIconRow}>
-            <View style={[styles.stepDot, styles.stepDotDone]} />
-            <View style={styles.stepLine} />
-            <View style={[styles.stepDot, styles.stepDotDone]} />
-            <View style={styles.stepLine} />
-            <View style={[styles.stepDot, styles.stepDotActive]} />
-          </View>
-
-          <View style={styles.bioIconCircle}>
-            <Ionicons name={isFaceID ? 'scan-outline' : 'finger-print-outline'} size={48} color="#fff" />
-          </View>
-          <Text style={styles.stepTitle}>Set up {isFaceID ? 'Face ID' : 'Fingerprint'}</Text>
-          <Text style={styles.stepSub}>Log in quickly and securely without typing your password.</Text>
-
-          <TouchableOpacity
-            style={[styles.primaryBtn, bioLoading && styles.btnDisabled]}
-            onPress={handleEnableBiometrics}
-            disabled={bioLoading}
-          >
-            {bioLoading ? <ActivityIndicator color="#fff" /> : (
-              <>
-                <Ionicons name={isFaceID ? 'scan-outline' : 'finger-print-outline'} size={20} color="#fff" />
-                <Text style={styles.primaryBtnText}>Register {isFaceID ? 'Face ID' : 'Fingerprint'}</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.skipBtn}
-            onPress={() => { setBiometricsEnabled(false); if (onRegistered) onRegistered(email); }}
-          >
-            <Text style={styles.skipText}>Skip for now</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <BiometricRegisterStep
+        isFaceID={isFaceID}
+        onDone={async (success) => {
+          if (success) {
+            await setBiometricsEnabled(true);
+          } else {
+            await setBiometricsEnabled(false);
+          }
+          if (onRegistered) onRegistered(email);
+        }}
+      />
     );
   }
 
@@ -356,17 +463,11 @@ export default function RegisterScreen({ onToggle, onRegistered }: Props) {
           </View>
 
           {/* Address */}
-          <View style={[styles.inputWrapper, styles.textAreaWrapper]}>
-            <View style={[styles.inputIcon, { paddingTop: 2 }]}><Ionicons name="location-outline" size={18} color={Colors.textLight} /></View>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Address (optional)"
-              placeholderTextColor={Colors.textLight}
+          <View style={styles.locationField}>
+            <Text style={styles.locationLabel}>Location (optional)</Text>
+            <LocationPicker
               value={address}
-              onChangeText={setAddress}
-              multiline
-              numberOfLines={2}
-              textAlignVertical="top"
+              onChange={setAddress}
             />
           </View>
 
@@ -418,6 +519,8 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.lg },
   footerText: { color: Colors.textSecondary, fontSize: FontSize.sm },
   footerLink: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
+  locationField: { marginBottom: 12 },
+  locationLabel: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.textSecondary, marginBottom: 6 },
 
   // Shared step styles
   stepContainer: { flex: 1, backgroundColor: '#F0F4FF', alignItems: 'center', justifyContent: 'center', padding: Spacing.lg },

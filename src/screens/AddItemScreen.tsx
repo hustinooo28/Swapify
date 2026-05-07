@@ -18,12 +18,21 @@ const CATEGORIES = [
   { label: 'Other',       icon: 'grid-outline' },
 ];
 
+const CONDITIONS = [
+  { label: 'Brand New', color: '#10B981', desc: 'Never used, still in packaging' },
+  { label: 'Like New',  color: '#3B82F6', desc: 'Used once or twice, no defects' },
+  { label: 'Good',      color: '#6366F1', desc: 'Minor signs of use, fully working' },
+  { label: 'Fair',      color: '#F59E0B', desc: 'Visible wear but fully functional' },
+  { label: 'Poor',      color: '#EF4444', desc: 'Heavy wear, may have defects' },
+];
+
 export default function AddItemScreen() {
   const { theme } = useTheme();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [estimatedValue, setEstimatedValue] = useState('');
   const [category, setCategory] = useState('');
+  const [condition, setCondition] = useState('Good');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -55,10 +64,10 @@ export default function AddItemScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
     const imageUrl = await uploadImage(user.id);
-    const { error } = await supabase.from('items').insert({ user_id: user.id, title: title.trim(), description: description.trim(), estimated_value: parseFloat(estimatedValue), category, image_url: imageUrl || '', status: 'available' });
+    const { error } = await supabase.from('items').insert({ user_id: user.id, title: title.trim(), description: description.trim(), estimated_value: parseFloat(estimatedValue), category, condition, image_url: imageUrl || '', status: 'available' });
     setLoading(false);
     if (error) { Alert.alert('Error', 'Could not add item.'); return; }
-    Alert.alert('🎉 Listed!', 'Your item is now live on the marketplace.', [{ text: 'OK', onPress: () => { setTitle(''); setDescription(''); setEstimatedValue(''); setCategory(''); setImageUri(null); } }]);
+    Alert.alert('🎉 Listed!', 'Your item is now live on the marketplace.', [{ text: 'OK', onPress: () => { setTitle(''); setDescription(''); setEstimatedValue(''); setCategory(''); setCondition('Good'); setImageUri(null); } }]);
   };
 
   return (
@@ -119,6 +128,43 @@ export default function AddItemScreen() {
             </View>
           </View>
 
+            {/* Condition */}
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.fieldLabel, { color: theme.text }]}>Condition</Text>
+            <View style={styles.conditionList}>
+              {CONDITIONS.map((c) => {
+                const selected = condition === c.label;
+                return (
+                  <TouchableOpacity
+                    key={c.label}
+                    style={[
+                      styles.conditionRow,
+                      {
+                        backgroundColor: selected ? c.color + '15' : theme.card,
+                        borderColor: selected ? c.color : theme.border,
+                      },
+                    ]}
+                    onPress={() => setCondition(c.label)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.conditionDot, { backgroundColor: c.color }]} />
+                    <View style={styles.conditionInfo}>
+                      <Text style={[styles.conditionLabel, { color: selected ? c.color : theme.text }]}>
+                        {c.label}
+                      </Text>
+                      <Text style={[styles.conditionDesc, { color: theme.textSecondary }]}>
+                        {c.desc}
+                      </Text>
+                    </View>
+                    {selected && (
+                      <Ionicons name="checkmark-circle" size={18} color={c.color} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           {/* Category */}
           <View style={styles.fieldGroup}>
             <Text style={[styles.fieldLabel, { color: theme.text }]}>Category</Text>
@@ -156,8 +202,14 @@ export default function AddItemScreen() {
 }
 
 const styles = StyleSheet.create({
+  conditionList: { gap: 8 },
+  conditionRow: { flexDirection: 'row', alignItems: 'center', borderRadius: BorderRadius.md, borderWidth: 1.5, padding: 12, gap: 12 },
+  conditionDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  conditionInfo: { flex: 1 },
+  conditionLabel: { fontSize: FontSize.sm, fontWeight: '700' },
+  conditionDesc: { fontSize: FontSize.xs, marginTop: 1 },
   container: { flex: 1 },
-  scroll: { paddingBottom: 40 },
+  scroll: { paddingBottom: 120 },
   header: { paddingTop: 56, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg },
   headerTitle: { fontSize: FontSize.xxl, fontWeight: '800', letterSpacing: -0.3 },
   headerSub: { fontSize: FontSize.sm, marginTop: 2 },

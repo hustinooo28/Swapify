@@ -16,7 +16,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.swapify.app",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Swapify uses Face ID to securely verify your identity and log you in."
+        "NSFaceIDUsageDescription": "Swapify uses Face ID to securely verify your identity and log you in.",
+        "NSLocationWhenInUseUsageDescription": "Swapify uses your location to show your general area to potential trade partners.",
+        "NSLocationAlwaysUsageDescription": "Swapify uses your location to show your general area to potential trade partners."
       }
     },
     "android": {
@@ -27,7 +29,9 @@
       "package": "com.swapify.app",
       "permissions": [
         "USE_BIOMETRIC",
-        "USE_FINGERPRINT"
+        "USE_FINGERPRINT",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {

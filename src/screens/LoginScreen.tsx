@@ -7,8 +7,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize } from '../lib/theme';
 import {
-  isBiometricsAvailable, getBiometricsEnabled,
+  isBiometricsAvailable,
+  getBiometricsEnabled,
   authenticateWithBiometrics,
+  saveCredentialsForBiometrics,
+  getStoredCredentials,
 } from '../lib/biometrics';
 import * as LocalAuthentication from 'expo-local-authentication';
 
@@ -23,7 +26,9 @@ export default function LoginScreen({ onToggle }: Props) {
   const [bioLoading, setBioLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
 
-  useEffect(() => { checkBiometricOption(); }, []);
+  useEffect(() => {
+    checkBiometricOption();
+  }, []);
 
   const checkBiometricOption = async () => {
     const available = await isBiometricsAvailable();
@@ -31,11 +36,13 @@ export default function LoginScreen({ onToggle }: Props) {
     if (available && enabled) {
       setShowBiometricBtn(true);
       const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-      setIsFaceID(types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION));
+      setIsFaceID(
+        types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION),
+      );
     }
   };
 
-const handleLogin = async () => {
+  const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields.');
       return;
@@ -43,28 +50,71 @@ const handleLogin = async () => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    // Generic error — never expose specific auth failure reasons
-    if (error) Alert.alert('Login Failed', 'Invalid credentials. Please try again.');
+
+    if (error) {
+      // Generic — never expose specific reason
+      Alert.alert('Login Failed', 'Invalid credentials. Please try again.');
+      return;
+    }
+
+    // Save credentials securely so biometric login can re-auth later
+    await saveCredentialsForBiometrics(email, password);
   };
 
   const handleBiometricLogin = async () => {
     setBioLoading(true);
-    await new Promise(r => setTimeout(r, 300));
+
+    // Step 1: verify identity with Face ID
     const success = await authenticateWithBiometrics();
-    setBioLoading(false);
-    if (success) {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) Alert.alert('Session Expired', 'Please log in with your email and password once to restore your session.');
-    } else {
-      Alert.alert('Try Again', 'Biometric verification was not successful.');
+
+    if (!success) {
+      setBioLoading(false);
+      Alert.alert(
+        'Verification Failed',
+        'Face ID was not recognised. Please use your email and password.',
+      );
+      return;
     }
+
+    // Step 2: retrieve stored credentials and sign in
+    const creds = await getStoredCredentials();
+
+    if (!creds) {
+      setBioLoading(false);
+      Alert.alert(
+        'Session Expired',
+        'Please log in with your email and password once to restore biometric login.',
+      );
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: creds.email,
+      password: creds.password,
+    });
+
+    setBioLoading(false);
+
+    if (error) {
+      Alert.alert(
+        'Login Failed',
+        'Could not sign you in. Please use your email and password.',
+      );
+    }
+    // On success, auth state updates automatically → app navigates in
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-
-        {/* Top decoration */}
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Decorations */}
         <View style={styles.topDecor}>
           <View style={styles.decorCircle1} />
           <View style={styles.decorCircle2} />
@@ -76,7 +126,9 @@ const handleLogin = async () => {
             <Ionicons name="swap-horizontal" size={32} color="#fff" />
           </View>
           <Text style={styles.appName}>Swapify</Text>
-          <Text style={styles.tagline}>Trade what you have.{'\n'}Get what you need.</Text>
+          <Text style={styles.tagline}>
+            Trade what you have.{'\n'}Get what you need.
+          </Text>
         </View>
 
         {/* Card */}
@@ -113,17 +165,31 @@ const handleLogin = async () => {
               value={password}
               onChangeText={setPassword}
             />
-            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPass(!showPass)}>
-              <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color={Colors.textLight} />
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPass(!showPass)}
+            >
+              <Ionicons
+                name={showPass ? 'eye-off-outline' : 'eye-outline'}
+                size={18}
+                color={Colors.textLight}
+              />
             </TouchableOpacity>
           </View>
 
-          {/* Login Button */}
-          <TouchableOpacity style={[styles.primaryBtn, loading && styles.btnDisabled]} onPress={handleLogin} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Sign In</Text>}
+          {/* Login button */}
+          <TouchableOpacity
+            style={[styles.primaryBtn, loading && styles.btnDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.primaryBtnText}>Sign In</Text>
+            }
           </TouchableOpacity>
 
-          {/* Biometric */}
+          {/* Biometric option */}
           {showBiometricBtn && (
             <>
               <View style={styles.divider}>
@@ -131,11 +197,23 @@ const handleLogin = async () => {
                 <Text style={styles.dividerText}>or</Text>
                 <View style={styles.dividerLine} />
               </View>
-              <TouchableOpacity style={[styles.bioBtn, bioLoading && styles.btnDisabled]} onPress={handleBiometricLogin} disabled={bioLoading}>
-                {bioLoading ? <ActivityIndicator color={Colors.primary} /> : (
+              <TouchableOpacity
+                style={[styles.bioBtn, bioLoading && styles.btnDisabled]}
+                onPress={handleBiometricLogin}
+                disabled={bioLoading}
+              >
+                {bioLoading ? (
+                  <ActivityIndicator color={Colors.primary} />
+                ) : (
                   <>
-                    <Ionicons name={isFaceID ? 'scan-outline' : 'finger-print-outline'} size={20} color={Colors.primary} />
-                    <Text style={styles.bioBtnText}>{isFaceID ? 'Sign in with Face ID' : 'Sign in with Fingerprint'}</Text>
+                    <Ionicons
+                      name={isFaceID ? 'scan-outline' : 'finger-print-outline'}
+                      size={20}
+                      color={Colors.primary}
+                    />
+                    <Text style={styles.bioBtnText}>
+                      {isFaceID ? 'Sign in with Face ID' : 'Sign in with Fingerprint'}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -144,7 +222,9 @@ const handleLogin = async () => {
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={onToggle}><Text style={styles.footerLink}>Sign Up</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onToggle}>
+              <Text style={styles.footerLink}>Sign Up</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>

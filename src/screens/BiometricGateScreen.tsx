@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, FontSize } from '../lib/theme';
-import { authenticateWithBiometrics, isFaceIDAvailable } from '../lib/biometrics';
+import { authenticateWithBiometrics, isFaceIDAvailable, setBiometricsEnabled } from '../lib/biometrics';
 import { supabase } from '../lib/supabase';
 
 type Props = {
@@ -16,11 +16,13 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [isFaceID, setIsFaceID] = useState(false);
+  const [attemptCount, setAttemptCount] = useState(0);
 
   useEffect(() => {
     isFaceIDAvailable().then(setIsFaceID);
-    // Auto-trigger on mount
-    setTimeout(() => triggerAuth(), 500);
+    // Auto-trigger on mount after short delay
+    const timer = setTimeout(() => triggerAuth(), 600);
+    return () => clearTimeout(timer);
   }, []);
 
   const triggerAuth = async () => {
@@ -32,11 +34,19 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
       onSuccess();
     } else {
       setFailed(true);
+      setAttemptCount(c => c + 1);
     }
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+  };
+
+  const handleDisableBiometrics = async () => {
+    // If they can't auth, let them disable it and go to app
+    // They'll need to re-enable from settings
+    await setBiometricsEnabled(false);
+    onFallback();
   };
 
   return (
@@ -71,7 +81,7 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
         </Text>
         <Text style={styles.subtitle}>
           {failed
-            ? 'We could not verify your identity. Please try again.'
+            ? 'Could not verify your identity.'
             : `Use ${isFaceID ? 'Face ID' : 'your fingerprint'} to securely access Swapify`}
         </Text>
 
@@ -81,13 +91,35 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
           onPress={triggerAuth}
           disabled={loading}
         >
-          <Ionicons name={isFaceID ? 'scan-outline' : 'finger-print-outline'} size={18} color="#fff" />
-          <Text style={styles.tryBtnText}>
-            {failed ? 'Try Again' : `Use ${isFaceID ? 'Face ID' : 'Fingerprint'}`}
-          </Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons
+                name={isFaceID ? 'scan-outline' : 'finger-print-outline'}
+                size={18}
+                color="#fff"
+              />
+              <Text style={styles.tryBtnText}>
+                {failed ? 'Try Again' : `Use ${isFaceID ? 'Face ID' : 'Fingerprint'}`}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
 
-        {/* Sign out fallback */}
+        {/* Show disable option after 2 failed attempts */}
+        {attemptCount >= 2 && (
+          <TouchableOpacity
+            style={styles.disableBtn}
+            onPress={handleDisableBiometrics}
+          >
+            <Text style={styles.disableBtnText}>
+              Disable biometrics & continue
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Sign out */}
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
           <Text style={styles.signOutText}>Sign in with a different account</Text>
         </TouchableOpacity>
@@ -108,9 +140,11 @@ const styles = StyleSheet.create({
   bioCircleFailed: { backgroundColor: Colors.error + '12', borderColor: Colors.error + '30' },
   title: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.text, textAlign: 'center', marginBottom: 8 },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: Spacing.xl },
-  tryBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 15, borderRadius: BorderRadius.md, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4, width: '100%', justifyContent: 'center' },
+  tryBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 15, borderRadius: BorderRadius.md, width: '100%', justifyContent: 'center', shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
   btnDisabled: { opacity: 0.6 },
   tryBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
-  signOutBtn: { marginTop: Spacing.lg, padding: Spacing.md },
+  disableBtn: { marginTop: Spacing.md, padding: Spacing.md, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.border, width: '100%', alignItems: 'center' },
+  disableBtnText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
+  signOutBtn: { marginTop: Spacing.md, padding: Spacing.md },
   signOutText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
 });

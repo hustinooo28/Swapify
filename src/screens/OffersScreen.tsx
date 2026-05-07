@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
   tabBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: BorderRadius.full },
   tabBtnActive: { backgroundColor: Colors.primary },
   tabBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
-  list: { padding: Spacing.lg, gap: 14 },
+  list: { padding: Spacing.lg, gap: 14, paddingBottom: 120 },
   card: { borderRadius: BorderRadius.xl, padding: Spacing.md, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: BorderRadius.full },

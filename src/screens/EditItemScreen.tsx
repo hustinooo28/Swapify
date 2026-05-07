@@ -21,6 +21,14 @@ const CATEGORIES = [
   { label: 'Other',       icon: 'grid-outline' },
 ];
 
+const CONDITIONS = [
+  { label: 'Brand New', color: '#10B981', desc: 'Never used, still in packaging' },
+  { label: 'Like New',  color: '#3B82F6', desc: 'Used once or twice, no defects' },
+  { label: 'Good',      color: '#6366F1', desc: 'Minor signs of use, fully working' },
+  { label: 'Fair',      color: '#F59E0B', desc: 'Visible wear but fully functional' },
+  { label: 'Poor',      color: '#EF4444', desc: 'Heavy wear, may have defects' },
+];
+
 export default function EditItemScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -31,6 +39,7 @@ export default function EditItemScreen() {
   const [description, setDescription] = useState(item.description);
   const [estimatedValue, setEstimatedValue] = useState(String(item.estimated_value));
   const [category, setCategory] = useState(item.category);
+  const [condition, setCondition] = useState(item.condition || 'Good');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [existingImageUrl] = useState(item.image_url);
   const [loading, setLoading] = useState(false);
@@ -76,6 +85,7 @@ export default function EditItemScreen() {
         description: description.trim(),
         estimated_value: parseFloat(estimatedValue),
         category,
+        condition,
         image_url: newImageUrl || existingImageUrl,
       })
       .eq('id', item.id);
@@ -160,6 +170,43 @@ export default function EditItemScreen() {
             </View>
           </View>
 
+            {/* Condition */}
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.label, { color: theme.text }]}>Condition</Text>
+            <View style={{ gap: 8 }}>
+              {CONDITIONS.map((c) => {
+                const selected = condition === c.label;
+                return (
+                  <TouchableOpacity
+                    key={c.label}
+                    style={[
+                      styles.conditionRow,
+                      {
+                        backgroundColor: selected ? c.color + '15' : theme.card,
+                        borderColor: selected ? c.color : theme.border,
+                      },
+                    ]}
+                    onPress={() => setCondition(c.label as typeof condition)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.conditionDot, { backgroundColor: c.color }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.conditionLabel, { color: selected ? c.color : theme.text }]}>
+                        {c.label}
+                      </Text>
+                      <Text style={[styles.conditionDesc, { color: theme.textSecondary }]}>
+                        {c.desc}
+                      </Text>
+                    </View>
+                    {selected && <Ionicons name="checkmark-circle" size={18} color={c.color} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+
+
           {/* Category */}
           <View style={styles.fieldGroup}>
             <Text style={[styles.label, { color: theme.text }]}>Category</Text>
@@ -200,6 +247,10 @@ export default function EditItemScreen() {
 }
 
 const styles = StyleSheet.create({
+  conditionRow: { flexDirection: 'row', alignItems: 'center', borderRadius: BorderRadius.md, borderWidth: 1.5, padding: 12, gap: 12 },
+  conditionDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  conditionLabel: { fontSize: FontSize.sm, fontWeight: '700' },
+  conditionDesc: { fontSize: FontSize.xs, marginTop: 1 },
   container: { flex: 1 },
   scroll: { paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Platform.OS === 'ios' ? 56 : 20, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },

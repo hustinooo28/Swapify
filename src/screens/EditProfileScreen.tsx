@@ -10,6 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize } from '../lib/theme';
 import { useTheme } from '../lib/ThemeContext';
+import LocationPicker from '../components/LocationPicker';
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<any>();
@@ -46,20 +47,27 @@ export default function EditProfileScreen() {
     if (!result.canceled) setAvatarUri(result.assets[0].uri);
   };
 
-  const uploadAvatar = async (userId: string): Promise<string | null> => {
+const uploadAvatar = async (userId: string): Promise<string | null> => {
     if (!avatarUri) return null;
     try {
-      const ext = avatarUri.split('.').pop() || 'jpg';
-      const fileName = `avatar_${userId}.${ext}`;
+      const ext = (avatarUri.split('.').pop() || 'jpg').split('?')[0];
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+      const fileName = `${userId}/avatar.${safeExt}`;
       const response = await fetch(avatarUri);
       const blob = await response.blob();
       const arrayBuffer = await new Response(blob).arrayBuffer();
       const { error } = await supabase.storage
         .from('avatars')
-        .upload(fileName, arrayBuffer, { contentType: `image/${ext}`, upsert: true });
-      if (error) throw error;
+        .upload(fileName, arrayBuffer, {
+          contentType: `image/${safeExt}`,
+          upsert: true,
+        });
+      if (error) {
+        console.error('Storage upload error:', error.message);
+        return null;
+      }
       const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      return data.publicUrl;
+      return `${data.publicUrl}?t=${Date.now()}`;
     } catch { return null; }
   };
 
@@ -195,20 +203,11 @@ export default function EditProfileScreen() {
 
             {/* Address */}
             <View style={styles.fieldGroup}>
-              <Text style={[styles.fieldLabel, { color: theme.text }]}>Address</Text>
-              <View style={[styles.inputRow, styles.textAreaRow, { backgroundColor: theme.background, borderColor: theme.border }]}>
-                <Ionicons name="location-outline" size={18} color={theme.textLight} style={[styles.inputIcon, { paddingTop: 2 }]} />
-                <TextInput
-                  style={[styles.input, styles.textArea, { color: theme.text }]}
-                  placeholder="Your address"
-                  placeholderTextColor={theme.textLight}
-                  value={address}
-                  onChangeText={setAddress}
-                  multiline
-                  numberOfLines={3}
-                  textAlignVertical="top"
-                />
-              </View>
+              <Text style={[styles.fieldLabel, { color: theme.text }]}>Location</Text>
+              <LocationPicker
+                value={address}
+                onChange={setAddress}
+              />
             </View>
           </View>
 

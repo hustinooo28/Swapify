@@ -12,9 +12,11 @@ import OTPScreen from './src/screens/OTPScreen';
 import BiometricGateScreen from './src/screens/BiometricGateScreen';
 import { ThemeProvider, useTheme } from './src/lib/ThemeContext';
 import { Colors } from './src/lib/theme';
-import { getBiometricsEnabled, isBiometricsAvailable } from './src/lib/biometrics';
+import {
+  getBiometricsEnabled,
+  isBiometricsAvailable,
+} from './src/lib/biometrics';
 
-// Auth flow steps
 type AuthStep = 'login' | 'register' | 'otp' | 'biometric' | 'app';
 
 function Main() {
@@ -23,28 +25,40 @@ function Main() {
   const [step, setStep] = useState<AuthStep>('login');
   const [pendingEmail, setPendingEmail] = useState('');
   const [checkingBio, setCheckingBio] = useState(false);
+  const [bioChecked, setBioChecked] = useState(false);
 
-  // When session appears (after OTP confirm), check if biometrics needed
   useEffect(() => {
-    if (auth.session && step === 'otp') {
+    // Only run biometric check once when session first appears
+    if (auth.session && !bioChecked) {
+      setBioChecked(true);
       checkBiometricGate();
     }
-    // On app restart with existing session, go through biometric gate
-    if (auth.session && step === 'login') {
-      checkBiometricGate();
+    // If session disappears (logout), reset everything
+    if (!auth.session && !auth.loading) {
+      setStep('login');
+      setBioChecked(false);
     }
-  }, [auth.session]);
+  }, [auth.session, auth.loading]);
 
   const checkBiometricGate = async () => {
     setCheckingBio(true);
-    const enabled = await getBiometricsEnabled();
-    const available = await isBiometricsAvailable();
-    setCheckingBio(false);
-    if (enabled && available) {
-      setStep('biometric');
-    } else {
+    try {
+      // BOTH must be true: user opted in AND device supports it
+      const enabled = await getBiometricsEnabled();
+      const available = await isBiometricsAvailable();
+
+      if (enabled && available) {
+        // User explicitly enabled biometrics — show gate
+        setStep('biometric');
+      } else {
+        // Not enabled or not available — go straight to app
+        setStep('app');
+      }
+    } catch {
+      // On any error, just let them in
       setStep('app');
     }
+    setCheckingBio(false);
   };
 
   if (auth.loading || checkingBio) {
@@ -55,7 +69,7 @@ function Main() {
     );
   }
 
-  // Not logged in flows
+  // ── Not logged in ──
   if (!auth.session) {
     if (step === 'register') {
       return (
@@ -72,11 +86,7 @@ function Main() {
       return (
         <OTPScreen
           email={pendingEmail}
-          onVerified={() => {
-            // Session will be set after email confirm
-            // For now go back to login with success message
-            setStep('login');
-          }}
+          onVerified={() => setStep('login')}
           onBack={() => setStep('login')}
         />
       );
@@ -84,7 +94,7 @@ function Main() {
     return <LoginScreen onToggle={() => setStep('register')} />;
   }
 
-  // Logged in flows
+  // ── Logged in: biometric gate ──
   if (step === 'biometric') {
     return (
       <BiometricGateScreen
@@ -94,13 +104,23 @@ function Main() {
     );
   }
 
+  // ── Logged in: main app ──
+  if (step === 'app') {
+    return (
+      <>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <NavigationContainer>
+          <AppNavigator />
+        </NavigationContainer>
+      </>
+    );
+  }
+
+  // Fallback — show loading while step resolves
   return (
-    <>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-      <NavigationContainer>
-        <AppNavigator />
-      </NavigationContainer>
-    </>
+    <View style={[styles.loading, { backgroundColor: theme.background }]}>
+      <ActivityIndicator size="large" color={Colors.primary} />
+    </View>
   );
 }
 
