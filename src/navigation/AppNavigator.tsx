@@ -20,18 +20,21 @@ import EditItemScreen from '../screens/EditItemScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import SellerProfileScreen from '../screens/SellerProfileScreen';
+import AdminScreen from '../screens/AdminScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 // Screens where nav should be hidden
-const HIDDEN_NAV_SCREENS = ['Chat', 'ItemDetail', 'Notifications'];
+const HIDDEN_NAV_SCREENS = ['Chat', 'ItemDetail', 'Notifications', 'SellerProfile'];
 
 function HomeStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="HomeMain" component={HomeScreen} />
       <Stack.Screen name="ItemDetail" component={ItemDetailScreen} />
+      <Stack.Screen name="SellerProfile" component={SellerProfileScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="EditItem" component={EditItemScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
@@ -44,6 +47,8 @@ function OffersStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="OffersMain" component={OffersScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="SellerProfile" component={SellerProfileScreen} />
+      <Stack.Screen name="ItemDetail" component={ItemDetailScreen} />
     </Stack.Navigator>
   );
 }
@@ -55,6 +60,7 @@ function ProfileStack() {
       <Stack.Screen name="EditItem" component={EditItemScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Admin" component={AdminScreen} />
     </Stack.Navigator>
   );
 }

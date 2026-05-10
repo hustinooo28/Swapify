@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, FontSize } from '../lib/theme';
+import { useTheme } from '../lib/ThemeContext';
 import { authenticateWithBiometrics, isFaceIDAvailable, setBiometricsEnabled } from '../lib/biometrics';
 import { supabase } from '../lib/supabase';
 
@@ -13,6 +14,7 @@ type Props = {
 };
 
 export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
+  const { theme, isDark } = useTheme();
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [isFaceID, setIsFaceID] = useState(false);
@@ -20,7 +22,6 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
 
   useEffect(() => {
     isFaceIDAvailable().then(setIsFaceID);
-    // Auto-trigger on mount after short delay
     const timer = setTimeout(() => triggerAuth(), 600);
     return () => clearTimeout(timer);
   }, []);
@@ -43,28 +44,35 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
   };
 
   const handleDisableBiometrics = async () => {
-    // If they can't auth, let them disable it and go to app
-    // They'll need to re-enable from settings
     await setBiometricsEnabled(false);
     onFallback();
   };
 
+  const bg = isDark ? '#0F1120' : '#F0F4FF';
+  const cardBg = isDark ? '#1C1F2E' : '#FFFFFF';
+  const bioCircleBg = failed
+    ? Colors.error + '12'
+    : isDark ? '#1E2A3A' : Colors.primaryLight;
+  const bioCircleBorder = failed
+    ? Colors.error + '30'
+    : Colors.primary + '30';
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: bg }]}>
       <View style={styles.topDecor}>
         <View style={styles.decorCircle1} />
         <View style={styles.decorCircle2} />
       </View>
 
       <View style={styles.content}>
-        {/* App logo */}
+        {/* Logo */}
         <View style={styles.logoCircle}>
           <Ionicons name="swap-horizontal" size={28} color="#fff" />
         </View>
-        <Text style={styles.appName}>Swapify</Text>
+        <Text style={[styles.appName, { color: theme.text }]}>Swapify</Text>
 
         {/* Biometric icon */}
-        <View style={[styles.bioCircle, failed && styles.bioCircleFailed]}>
+        <View style={[styles.bioCircle, { backgroundColor: bioCircleBg, borderColor: bioCircleBorder }]}>
           {loading ? (
             <ActivityIndicator size="large" color={failed ? Colors.error : Colors.primary} />
           ) : (
@@ -76,10 +84,10 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
           )}
         </View>
 
-        <Text style={styles.title}>
+        <Text style={[styles.title, { color: theme.text }]}>
           {failed ? 'Authentication Failed' : `Verify with ${isFaceID ? 'Face ID' : 'Fingerprint'}`}
         </Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
           {failed
             ? 'Could not verify your identity.'
             : `Use ${isFaceID ? 'Face ID' : 'your fingerprint'} to securely access Swapify`}
@@ -107,13 +115,13 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
           )}
         </TouchableOpacity>
 
-        {/* Show disable option after 2 failed attempts */}
+        {/* Disable after 2 failed attempts */}
         {attemptCount >= 2 && (
           <TouchableOpacity
-            style={styles.disableBtn}
+            style={[styles.disableBtn, { borderColor: theme.border }]}
             onPress={handleDisableBiometrics}
           >
-            <Text style={styles.disableBtnText}>
+            <Text style={[styles.disableBtnText, { color: theme.textSecondary }]}>
               Disable biometrics & continue
             </Text>
           </TouchableOpacity>
@@ -121,7 +129,9 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
 
         {/* Sign out */}
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-          <Text style={styles.signOutText}>Sign in with a different account</Text>
+          <Text style={[styles.signOutText, { color: theme.textSecondary }]}>
+            Sign in with a different account
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -129,22 +139,21 @@ export default function BiometricGateScreen({ onSuccess, onFallback }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F4FF' },
+  container: { flex: 1 },
   topDecor: { position: 'absolute', top: 0, left: 0, right: 0, height: 200, overflow: 'hidden' },
   decorCircle1: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: Colors.primary, top: -140, left: -60, opacity: 0.1 },
   decorCircle2: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: Colors.primary, top: -60, right: -30, opacity: 0.07 },
   content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
   logoCircle: { width: 52, height: 52, borderRadius: 16, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  appName: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.text, marginBottom: Spacing.xl },
-  bioCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg, borderWidth: 2, borderColor: Colors.primary + '30' },
-  bioCircleFailed: { backgroundColor: Colors.error + '12', borderColor: Colors.error + '30' },
-  title: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.text, textAlign: 'center', marginBottom: 8 },
-  subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: Spacing.xl },
+  appName: { fontSize: FontSize.lg, fontWeight: '800', marginBottom: Spacing.xl },
+  bioCircle: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg, borderWidth: 2 },
+  title: { fontSize: FontSize.xl, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  subtitle: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20, marginBottom: Spacing.xl },
   tryBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 15, borderRadius: BorderRadius.md, width: '100%', justifyContent: 'center', shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
   btnDisabled: { opacity: 0.6 },
   tryBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
-  disableBtn: { marginTop: Spacing.md, padding: Spacing.md, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.border, width: '100%', alignItems: 'center' },
-  disableBtnText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
+  disableBtn: { marginTop: Spacing.md, padding: Spacing.md, borderRadius: BorderRadius.md, borderWidth: 1, width: '100%', alignItems: 'center' },
+  disableBtnText: { fontSize: FontSize.sm, fontWeight: '600' },
   signOutBtn: { marginTop: Spacing.md, padding: Spacing.md },
-  signOutText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
+  signOutText: { fontSize: FontSize.sm, fontWeight: '600' },
 });

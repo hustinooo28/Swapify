@@ -177,27 +177,34 @@ export default function ItemDetailScreen() {
           {/* Title */}
           <Text style={[styles.title, { color: theme.text }]}>{item.title}</Text>
 
-          {/* Seller row — info only, no duplicate message button */}
-          <View style={[styles.sellerRow, { backgroundColor: theme.background }]}>
-            {item.user?.avatar_url ? (
-              <Image
-                source={{ uri: item.user.avatar_url }}
-                style={styles.sellerAvatarImg}
-              />
-            ) : (
-              <View style={styles.sellerAvatar}>
-                <Text style={styles.sellerAvatarText}>
-                  {(item.user?.full_name || 'U')[0].toUpperCase()}
-                </Text>
-              </View>
-            )}
-            <View style={styles.sellerInfo}>
-              <Text style={[styles.sellerName, { color: theme.text }]}>
-                {item.user?.full_name || 'Unknown'}
-              </Text>
-              <Text style={[styles.sellerLabel, { color: theme.textSecondary }]}>Seller</Text>
-            </View>
-          </View>
+          {/* Seller row — tappable to view seller profile */}
+<TouchableOpacity
+  style={[styles.sellerRow, { backgroundColor: theme.background }]}
+  onPress={() => navigation.navigate('SellerProfile', { sellerId: item.user_id })}
+  activeOpacity={0.8}
+>
+  {item.user?.avatar_url ? (
+    <Image
+      source={{ uri: item.user.avatar_url }}
+      style={styles.sellerAvatarImg}
+    />
+  ) : (
+    <View style={styles.sellerAvatar}>
+      <Text style={styles.sellerAvatarText}>
+        {(item.user?.full_name || 'U')[0].toUpperCase()}
+      </Text>
+    </View>
+  )}
+  <View style={styles.sellerInfo}>
+    <Text style={[styles.sellerName, { color: theme.text }]}>
+      {item.user?.full_name || 'Unknown'}
+    </Text>
+    <Text style={[styles.sellerLabel, { color: theme.textSecondary }]}>
+      Tap to view seller profile
+    </Text>
+  </View>
+  <Ionicons name="chevron-forward" size={16} color={theme.textLight} />
+</TouchableOpacity>
 
           {/* Divider */}
           <View style={[styles.divider, { backgroundColor: theme.border }]} />

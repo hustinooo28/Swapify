@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Image, Alert, ActivityIndicator, RefreshControl,
+  Image, Alert, ActivityIndicator, RefreshControl, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +17,7 @@ export default function ProfileScreen() {
   const [myItems, setMyItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => { fetchProfile(); }, []);
 
@@ -24,7 +25,10 @@ export default function ProfileScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-    if (prof) setProfile(prof as User);
+    if (prof) {
+      setProfile(prof as User);
+      setIsAdmin((prof as any).is_admin === true);
+    }
     const { data: items } = await supabase.from('items').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
     if (items) setMyItems(items as Item[]);
     setLoading(false);
@@ -56,9 +60,9 @@ export default function ProfileScreen() {
     status === 'pending' ? Colors.warning : Colors.textLight;
 
   const statsData = [
-    { label: 'Listed', value: myItems.length },
+    { label: 'Listed',    value: myItems.length },
     { label: 'Available', value: myItems.filter(i => i.status === 'available').length },
-    { label: 'Traded', value: myItems.filter(i => i.status === 'traded').length },
+    { label: 'Traded',    value: myItems.filter(i => i.status === 'traded').length },
   ];
 
   if (loading) {
@@ -73,12 +77,19 @@ export default function ProfileScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <ScrollView
         contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchProfile(); }} tintColor={Colors.primary} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); fetchProfile(); }}
+            tintColor={Colors.primary}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
         <View style={[styles.header, { backgroundColor: theme.surface }]}>
-          {/* Top row with title and settings */}
+
+          {/* Top row */}
           <View style={styles.headerTopRow}>
             <Text style={[styles.headerTitle, { color: theme.text }]}>Profile</Text>
             <TouchableOpacity
@@ -153,6 +164,19 @@ export default function ProfileScreen() {
               </React.Fragment>
             ))}
           </View>
+
+          {/* Admin Panel button — only visible to admins */}
+          {isAdmin && (
+            <TouchableOpacity
+              style={[styles.adminBtn, { backgroundColor: Colors.error + '12' }]}
+              onPress={() => navigation.navigate('Admin')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="shield-checkmark" size={18} color={Colors.error} />
+              <Text style={[styles.adminBtnText, { color: Colors.error }]}>Admin Panel</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.error} style={{ marginLeft: 'auto' }} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* My Listings */}
@@ -234,14 +258,10 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: {},
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  // Header
   header: { paddingTop: Platform.OS === 'ios' ? 56 : 20, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg },
   headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg },
   headerTitle: { fontSize: FontSize.xxl, fontWeight: '800', letterSpacing: -0.3 },
   settingsBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-
-  // Profile row
   profileRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, marginBottom: Spacing.lg },
   avatarWrapper: { position: 'relative' },
   avatar: { width: 72, height: 72, borderRadius: 36 },
@@ -254,27 +274,21 @@ const styles = StyleSheet.create({
   infoChip: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   infoChipText: { fontSize: FontSize.xs },
   editBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-
-  // Stats
   statsRow: { flexDirection: 'row', borderRadius: BorderRadius.xl, padding: Spacing.md, justifyContent: 'space-around' },
   statItem: { alignItems: 'center' },
   statValue: { fontSize: FontSize.xl, fontWeight: '800' },
   statLabel: { fontSize: FontSize.xs, marginTop: 2 },
   statDivider: { width: 1, height: '60%', alignSelf: 'center' },
-
-  // Section
+  adminBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: BorderRadius.lg, padding: 14, marginTop: Spacing.md },
+  adminBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
   section: { padding: Spacing.lg },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   sectionTitle: { fontSize: FontSize.lg, fontWeight: '800' },
   sectionCount: { fontSize: FontSize.sm },
-
-  // Empty
   emptyCard: { borderRadius: BorderRadius.xl, padding: Spacing.xl, alignItems: 'center' },
   emptyIconBox: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.md },
   emptyTitle: { fontSize: FontSize.md, fontWeight: '700', marginBottom: 4 },
   emptyText: { fontSize: FontSize.sm, textAlign: 'center' },
-
-// Item card
   itemCard: { flexDirection: 'row', alignItems: 'center', borderRadius: BorderRadius.xl, padding: 12, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   itemImage: { width: 56, height: 56, borderRadius: BorderRadius.lg, marginRight: 12, flexShrink: 0 },
   itemInfo: { flex: 1, minWidth: 0 },
@@ -286,6 +300,3 @@ const styles = StyleSheet.create({
   itemActions: { flexDirection: 'row', gap: 6, flexShrink: 0, alignItems: 'center' },
   actionBtn: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
 });
-
-// Fix missing Platform import
-import { Platform } from 'react-native';
