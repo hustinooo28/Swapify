@@ -46,15 +46,28 @@ export default function OffersScreen() {
 
   useEffect(() => { if (userId) fetchOffers(); }, [userId, fetchOffers]);
 
-  const updateOfferStatus = async (offerId: string, status: 'accepted' | 'declined') => {
+const updateOfferStatus = async (offerId: string, status: 'accepted' | 'declined') => {
+    const offer = offers.find(o => o.id === offerId);
+    if (!offer) return;
+
     await supabase.from('offers').update({ status }).eq('id', offerId);
+
     if (status === 'accepted') {
-      const offer = offers.find(o => o.id === offerId);
-      if (offer) {
-        await supabase.from('items').update({ status: 'pending' }).eq('id', offer.offered_item_id);
-        await supabase.from('items').update({ status: 'pending' }).eq('id', offer.requested_item_id);
-      }
+      await supabase.from('items').update({ status: 'pending' }).eq('id', offer.offered_item_id);
+      await supabase.from('items').update({ status: 'pending' }).eq('id', offer.requested_item_id);
     }
+
+    // Notify the sender of the decision
+    await supabase.from('notifications').insert({
+      user_id: offer.sender_id,
+      type: 'offer',
+      title: status === 'accepted' ? '🎉 Offer Accepted!' : '❌ Offer Declined',
+      body: status === 'accepted'
+        ? `Your offer to trade "${offer.offered_item?.title}" for "${offer.requested_item?.title}" was accepted!`
+        : `Your offer to trade "${offer.offered_item?.title}" for "${offer.requested_item?.title}" was declined.`,
+      read: false,
+    });
+
     fetchOffers();
   };
 

@@ -18,19 +18,44 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [avgRating, setAvgRating] = useState(0);
+  const [ratingCount, setRatingCount] = useState(0);
 
   useEffect(() => { fetchProfile(); }, []);
 
   const fetchProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
     if (prof) {
       setProfile(prof as User);
       setIsAdmin((prof as any).is_admin === true);
     }
-    const { data: items } = await supabase.from('items').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+
+    const { data: items } = await supabase
+      .from('items')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
     if (items) setMyItems(items as Item[]);
+
+    // Fetch own rating
+    const { data: ratingData } = await supabase
+      .from('ratings')
+      .select('stars')
+      .eq('seller_id', user.id);
+    if (ratingData && ratingData.length > 0) {
+      const avg = ratingData.reduce((sum: number, r: any) => sum + r.stars, 0) / ratingData.length;
+      setAvgRating(avg);
+      setRatingCount(ratingData.length);
+    }
+
     setLoading(false);
     setRefreshing(false);
   };
@@ -128,6 +153,24 @@ export default function ProfileScreen() {
               <Text style={[styles.profileEmail, { color: theme.textSecondary }]}>
                 {profile?.email}
               </Text>
+
+              {/* Own rating */}
+              {ratingCount > 0 && (
+                <View style={styles.ratingRow}>
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <Ionicons
+                      key={star}
+                      name={star <= Math.round(avgRating) ? 'star' : 'star-outline'}
+                      size={13}
+                      color={star <= Math.round(avgRating) ? '#F59E0B' : '#D1D5DB'}
+                    />
+                  ))}
+                  <Text style={[styles.ratingText, { color: theme.textSecondary }]}>
+                    {avgRating.toFixed(1)} ({ratingCount} {ratingCount === 1 ? 'review' : 'reviews'})
+                  </Text>
+                </View>
+              )}
+
               {profile?.phone ? (
                 <View style={styles.infoChip}>
                   <Ionicons name="call-outline" size={12} color={theme.textLight} />
@@ -165,7 +208,7 @@ export default function ProfileScreen() {
             ))}
           </View>
 
-          {/* Admin Panel button — only visible to admins */}
+          {/* Admin Panel button */}
           {isAdmin && (
             <TouchableOpacity
               style={[styles.adminBtn, { backgroundColor: Colors.error + '12' }]}
@@ -270,7 +313,9 @@ const styles = StyleSheet.create({
   avatarBadge: { position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
   profileInfo: { flex: 1, gap: 2 },
   profileName: { fontSize: FontSize.lg, fontWeight: '800' },
-  profileEmail: { fontSize: FontSize.xs, marginBottom: 4 },
+  profileEmail: { fontSize: FontSize.xs, marginBottom: 2 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
+  ratingText: { fontSize: FontSize.xs, marginLeft: 2 },
   infoChip: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   infoChipText: { fontSize: FontSize.xs },
   editBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },

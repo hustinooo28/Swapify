@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl, Image,
+  ActivityIndicator, RefreshControl, Image, Platform, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize } from '../lib/theme';
 import { useTheme } from '../lib/ThemeContext';
 
-type NotifType = 'offer' | 'message';
+type NotifType = 'offer' | 'message' | 'admin';
 
 type Notif = {
   id: string;
@@ -21,6 +21,7 @@ type Notif = {
   avatarInitial: string;
   payload: any;
   read: boolean;
+  rawId?: string; // actual DB id for admin notifs
 };
 
 function timeAgo(dateStr: string): string {
@@ -44,16 +45,15 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) { setUserId(user.id); }
+      if (user) setUserId(user.id);
     });
   }, []);
 
   const fetchNotifs = useCallback(async () => {
     if (!userId) return;
-
     const results: Notif[] = [];
 
-    // Fetch pending trade offers received
+    // Trade offers received
     const { data: offers } = await supabase
       .from('offers')
       .select(`
@@ -68,12 +68,10 @@ export default function NotificationsScreen() {
 
     if (offers) {
       offers.forEach((o: any) => {
-        const isNew = o.status === 'pending';
         const statusLabel =
           o.status === 'pending' ? 'New Trade Offer' :
           o.status === 'accepted' ? 'Offer Accepted' :
           o.status === 'declined' ? 'Offer Declined' : 'Trade Offer';
-
         results.push({
           id: `offer_${o.id}`,
           type: 'offer',
@@ -88,7 +86,7 @@ export default function NotificationsScreen() {
       });
     }
 
-    // Fetch messages received
+    // Messages received
     const { data: messages } = await supabase
       .from('messages')
       .select(`
@@ -119,33 +117,98 @@ export default function NotificationsScreen() {
       });
     }
 
-    // Sort all by time desc
+    // Admin notifications
+    const { data: adminNotifs } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (adminNotifs) {
+      adminNotifs.forEach((n: any) => {
+        results.push({
+          id: `notif_${n.id}`,
+          rawId: n.id,
+          type: 'admin',
+          title: n.title,
+          subtitle: n.body,
+          time: n.created_at,
+          avatarInitial: 'A',
+          payload: n,
+          read: n.read,
+        });
+      });
+    }
+
     results.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
     setNotifs(results);
     setLoading(false);
     setRefreshing(false);
   }, [userId]);
 
+  // Realtime subscriptions
+  useEffect(() => {
+    if (!userId) return;
+
+    const offersChannel = supabase
+      .channel(`notif_offers_${userId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'offers', filter: `receiver_id=eq.${userId}` }, () => fetchNotifs())
+      .subscribe();
+
+    const msgsChannel = supabase
+      .channel(`notif_msgs_${userId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${userId}` }, () => fetchNotifs())
+      .subscribe();
+
+    const adminChannel = supabase
+      .channel(`notif_admin_${userId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, () => fetchNotifs())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(offersChannel);
+      supabase.removeChannel(msgsChannel);
+      supabase.removeChannel(adminChannel);
+    };
+  }, [userId, fetchNotifs]);
+
   useEffect(() => { if (userId) fetchNotifs(); }, [userId, fetchNotifs]);
 
-  const handlePress = (notif: Notif) => {
+  // Mark admin notification as read in DB
+  const markAdminRead = async (rawId: string) => {
+    await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', rawId);
+  };
+
+  const handlePress = async (notif: Notif) => {
+    // Mark as read locally immediately
+    setNotifs(prev =>
+      prev.map(n => n.id === notif.id ? { ...n, read: true } : n)
+    );
+
+    // Persist read state for admin notifs
+    if (notif.type === 'admin' && notif.rawId && !notif.read) {
+      await markAdminRead(notif.rawId);
+    }
+
+    // Navigate
     if (notif.type === 'offer') {
       navigation.navigate('Offers');
     } else if (notif.type === 'message') {
       const m = notif.payload;
-      if (m.offer?.id) {
-        navigation.navigate('Chat', { offer: m.offer });
-      }
+      if (m.offer?.id) navigation.navigate('Chat', { offer: m.offer });
     }
+    // admin type: no navigation, just marks read
   };
 
-  const iconConfig = (type: NotifType, read: boolean) => ({
-    icon: type === 'offer' ? 'swap-horizontal' : 'chatbubble',
-    color: type === 'offer' ? Colors.primary : Colors.secondary,
-    bg: type === 'offer'
-      ? (read ? Colors.primaryLight : Colors.primary + '22')
-      : (read ? '#E0FAF5' : '#0BC9A822'),
-  });
+  const iconConfig = (type: NotifType, read: boolean) => {
+    if (type === 'admin') return { icon: 'shield', color: Colors.error, bg: Colors.error + '18' };
+    if (type === 'offer') return { icon: 'swap-horizontal', color: Colors.primary, bg: read ? Colors.primaryLight : Colors.primary + '22' };
+    return { icon: 'chatbubble', color: Colors.secondary, bg: read ? '#E0FAF5' : '#0BC9A822' };
+  };
 
   const renderNotif = ({ item: notif }: { item: Notif }) => {
     const cfg = iconConfig(notif.type, notif.read);
@@ -153,13 +216,12 @@ export default function NotificationsScreen() {
       <TouchableOpacity
         style={[
           styles.card,
-          { backgroundColor: notif.read ? theme.surface : theme.surface },
+          { backgroundColor: theme.surface },
           !notif.read && { borderLeftWidth: 3, borderLeftColor: Colors.primary },
         ]}
         onPress={() => handlePress(notif)}
         activeOpacity={0.8}
       >
-        {/* Left: avatar or icon */}
         <View style={styles.cardLeft}>
           {notif.avatar ? (
             <View style={styles.avatarWrapper}>
@@ -170,7 +232,7 @@ export default function NotificationsScreen() {
             </View>
           ) : (
             <View style={[styles.avatarFallback, { backgroundColor: cfg.bg }]}>
-              <Text style={[styles.avatarInitial, { color: cfg.color }]}>
+              <Text style={[styles.avatarInitialText, { color: cfg.color }]}>
                 {notif.avatarInitial}
               </Text>
               <View style={[styles.iconBadge, { backgroundColor: cfg.color }]}>
@@ -180,7 +242,6 @@ export default function NotificationsScreen() {
           )}
         </View>
 
-        {/* Right: text */}
         <View style={styles.cardBody}>
           <View style={styles.cardTitleRow}>
             <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={1}>
@@ -201,7 +262,6 @@ export default function NotificationsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.surface }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={theme.text} />
@@ -245,54 +305,28 @@ export default function NotificationsScreen() {
   );
 }
 
-import { Platform } from 'react-native';
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: Platform.OS === 'ios' ? 56 : 20,
-    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Platform.OS === 'ios' ? 56 : 20, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
   backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: FontSize.lg, fontWeight: '800' },
   list: { padding: Spacing.lg, gap: 10, paddingBottom: 40 },
-  card: {
-    flexDirection: 'row', borderRadius: BorderRadius.xl,
-    padding: Spacing.md, gap: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
-  },
+  card: { flexDirection: 'row', borderRadius: BorderRadius.xl, padding: Spacing.md, gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
   cardLeft: { alignItems: 'center', justifyContent: 'flex-start', paddingTop: 2 },
   avatarWrapper: { position: 'relative', width: 46, height: 46 },
   avatar: { width: 46, height: 46, borderRadius: 23 },
-  avatarFallback: {
-    width: 46, height: 46, borderRadius: 23,
-    alignItems: 'center', justifyContent: 'center',
-    position: 'relative',
-  },
-  avatarInitial: { fontSize: FontSize.lg, fontWeight: '800' },
-  iconBadge: {
-    position: 'absolute', bottom: -2, right: -2,
-    width: 18, height: 18, borderRadius: 9,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: '#fff',
-  },
+  avatarFallback: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  avatarInitialText: { fontSize: FontSize.lg, fontWeight: '800' },
+  iconBadge: { position: 'absolute', bottom: -2, right: -2, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#fff' },
   cardBody: { flex: 1 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
   cardTitle: { fontSize: FontSize.sm, fontWeight: '700', flex: 1 },
-  unreadDot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: Colors.primary, flexShrink: 0,
-  },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary, flexShrink: 0 },
   cardSubtitle: { fontSize: FontSize.xs, lineHeight: 17, marginBottom: 4 },
   cardTime: { fontSize: FontSize.xs },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   empty: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 32 },
-  emptyIcon: {
-    width: 80, height: 80, borderRadius: 40,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-  },
+  emptyIcon: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyTitle: { fontSize: FontSize.xl, fontWeight: '800', marginBottom: 6 },
   emptySub: { fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20 },
 });

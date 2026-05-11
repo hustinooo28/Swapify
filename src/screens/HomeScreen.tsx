@@ -53,39 +53,49 @@ export default function HomeScreen() {
     fetchUnread(user.id);
 
     // Realtime subscription for notifications
-    supabase
-      .channel('notifications')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'offers',
-        filter: `receiver_id=eq.${user.id}`,
-      }, () => fetchUnread(user.id))
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `receiver_id=eq.${user.id}`,
-      }, () => fetchUnread(user.id))
-      .subscribe();
+supabase
+  .channel(`home_notifs_${user.id}`)
+  .on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'offers',
+    filter: `receiver_id=eq.${user.id}`,
+  }, () => fetchUnread(user.id))
+  .on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'messages',
+    filter: `receiver_id=eq.${user.id}`,
+  }, () => fetchUnread(user.id))
+  .on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'notifications',
+    filter: `user_id=eq.${user.id}`,
+  }, () => fetchUnread(user.id))
+  .subscribe();
   };
 
-  const fetchUnread = async (userId: string) => {
-    // Count pending offers received
-    const { count: offerCount } = await supabase
+const fetchUnread = async (userId: string) => {
+  const [{ count: offerCount }, { count: msgCount }, { count: notifCount }] = await Promise.all([
+    supabase
       .from('offers')
       .select('id', { count: 'exact', head: true })
       .eq('receiver_id', userId)
-      .eq('status', 'pending');
-
-    // Count unread messages (messages where receiver is current user)
-    const { count: msgCount } = await supabase
+      .eq('status', 'pending'),
+    supabase
       .from('messages')
       .select('id', { count: 'exact', head: true })
-      .eq('receiver_id', userId);
+      .eq('receiver_id', userId),
+    supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('read', false),
+  ]);
 
-    setUnreadCount((offerCount || 0) + (msgCount || 0));
-  };
+  setUnreadCount((offerCount || 0) + (msgCount || 0) + (notifCount || 0));
+};
 
   const fetchItems = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
