@@ -88,7 +88,12 @@ export default function ChatScreen() {
         table: 'messages',
         filter,
       }, (payload) => {
-        setMessages(prev => [...prev, payload.new as Message]);
+  setMessages(prev => {
+    const newMsg = payload.new as Message;
+    // Prevent duplicate if message already exists from fetchMessages
+    if (prev.some(m => m.id === newMsg.id)) return prev;
+    return [...prev, newMsg];
+  });
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       })
       .subscribe();

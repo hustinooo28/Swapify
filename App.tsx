@@ -12,10 +12,8 @@ import OTPScreen from './src/screens/OTPScreen';
 import BiometricGateScreen from './src/screens/BiometricGateScreen';
 import { ThemeProvider, useTheme } from './src/lib/ThemeContext';
 import { Colors } from './src/lib/theme';
-import {
-  getBiometricsEnabled,
-  isBiometricsAvailable,
-} from './src/lib/biometrics';
+import { getBiometricsEnabled, isBiometricsAvailable } from './src/lib/biometrics';
+import { supabase } from './src/lib/supabase';
 
 type AuthStep = 'login' | 'register' | 'otp' | 'biometric' | 'app';
 
@@ -24,16 +22,16 @@ function Main() {
   const { isDark, theme } = useTheme();
   const [step, setStep] = useState<AuthStep>('login');
   const [pendingEmail, setPendingEmail] = useState('');
+  const [pendingAvatarUri, setPendingAvatarUri] = useState<string | null>(null);
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [checkingBio, setCheckingBio] = useState(false);
   const [bioChecked, setBioChecked] = useState(false);
 
   useEffect(() => {
-    // Only run biometric check once when session first appears
     if (auth.session && !bioChecked) {
       setBioChecked(true);
       checkBiometricGate();
     }
-    // If session disappears (logout), reset everything
     if (!auth.session && !auth.loading) {
       setStep('login');
       setBioChecked(false);
@@ -43,23 +41,49 @@ function Main() {
   const checkBiometricGate = async () => {
     setCheckingBio(true);
     try {
-      // BOTH must be true: user opted in AND device supports it
       const enabled = await getBiometricsEnabled();
       const available = await isBiometricsAvailable();
-
-      if (enabled && available) {
-        // User explicitly enabled biometrics — show gate
-        setStep('biometric');
-      } else {
-        // Not enabled or not available — go straight to app
-        setStep('app');
-      }
+      setStep(enabled && available ? 'biometric' : 'app');
     } catch {
-      // On any error, just let them in
       setStep('app');
     }
     setCheckingBio(false);
   };
+
+  // Upload avatar after OTP verification — user is now authenticated
+  const uploadAvatarAfterVerification = async (userId: string, localUri: string) => {
+    try {
+      const ext = (localUri.split('.').pop() || 'jpg').split('?')[0];
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+      const fileName = `${userId}/avatar.${safeExt}`;
+      const response = await fetch(localUri);
+      const blob = await response.blob();
+      const arrayBuffer = await new Response(blob).arrayBuffer();
+      const { error } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, arrayBuffer, { contentType: `image/${safeExt}`, upsert: true });
+      if (error) { console.error('Avatar upload error:', error.message); return; }
+      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      const avatarUrl = `${data.publicUrl}?t=${Date.now()}`;
+      await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', userId);
+    } catch (e) {
+      console.error('Avatar upload failed:', e);
+    }
+  };
+
+const handleOTPVerified = async () => {
+  // Upload avatar now that the user is authenticated
+  if (pendingAvatarUri && pendingUserId) {
+    await uploadAvatarAfterVerification(pendingUserId, pendingAvatarUri);
+  }
+  // Clear pending state
+  setPendingAvatarUri(null);
+  setPendingUserId(null);
+  // Don't go to 'login' — session is already active after OTP.
+  // Check biometrics and go straight to app.
+  setBioChecked(true);
+  checkBiometricGate();
+};
 
   if (auth.loading || checkingBio) {
     return (
@@ -75,8 +99,10 @@ function Main() {
       return (
         <RegisterScreen
           onToggle={() => setStep('login')}
-          onRegistered={(email) => {
+          onRegistered={(email, avatarUri, userId) => {
             setPendingEmail(email);
+            if (avatarUri) setPendingAvatarUri(avatarUri);
+            if (userId) setPendingUserId(userId);
             setStep('otp');
           }}
         />
@@ -86,7 +112,7 @@ function Main() {
       return (
         <OTPScreen
           email={pendingEmail}
-          onVerified={() => setStep('login')}
+          onVerified={handleOTPVerified}
           onBack={() => setStep('login')}
         />
       );
@@ -116,7 +142,6 @@ function Main() {
     );
   }
 
-  // Fallback — show loading while step resolves
   return (
     <View style={[styles.loading, { backgroundColor: theme.background }]}>
       <ActivityIndicator size="large" color={Colors.primary} />
