@@ -18,19 +18,11 @@ export default function AdminScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Analytics
   const [analytics, setAnalytics] = useState({
-    totalUsers: 0,
-    totalListings: 0,
-    totalTrades: 0,
-    totalReports: 0,
-    pendingReports: 0,
+    totalUsers: 0, totalListings: 0, totalTrades: 0,
+    totalReports: 0, pendingReports: 0,
   });
-
-  // Reports
   const [reports, setReports] = useState<any[]>([]);
-
-  // Users
   const [users, setUsers] = useState<any[]>([]);
 
   useEffect(() => { fetchAll(); }, []);
@@ -57,10 +49,8 @@ export default function AdminScreen() {
       supabase.from('reports').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
     ]);
     setAnalytics({
-      totalUsers: totalUsers ?? 0,
-      totalListings: totalListings ?? 0,
-      totalTrades: totalTrades ?? 0,
-      totalReports: totalReports ?? 0,
+      totalUsers: totalUsers ?? 0, totalListings: totalListings ?? 0,
+      totalTrades: totalTrades ?? 0, totalReports: totalReports ?? 0,
       pendingReports: pendingReports ?? 0,
     });
   };
@@ -68,20 +58,17 @@ export default function AdminScreen() {
   const fetchReports = async () => {
     const { data } = await supabase
       .from('reports')
-      .select(`
-        *,
-        reporter:profiles!reporter_id(full_name, avatar_url),
-        reported:profiles!reported_user_id(full_name, avatar_url)
-      `)
+      .select(`*, reporter:profiles!reporter_id(full_name, avatar_url), reported:profiles!reported_user_id(full_name, avatar_url)`)
       .order('created_at', { ascending: false });
     if (data) setReports(data);
   };
 
   const fetchUsers = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, full_name, email, avatar_url, is_banned, is_admin, created_at')
       .order('created_at', { ascending: false });
+    if (error) console.error('fetchUsers error:', error.message);
     if (data) setUsers(data);
   };
 
@@ -100,31 +87,93 @@ export default function AdminScreen() {
     ]);
   };
 
-  const handleToggleBan = async (userId: string, isBanned: boolean) => {
-    const action = isBanned ? 'Unban' : 'Ban';
-    Alert.alert(`${action} User`, `Are you sure you want to ${action.toLowerCase()} this user?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: action,
-        style: isBanned ? 'default' : 'destructive',
-        onPress: async () => {
-          await supabase.from('profiles').update({ is_banned: !isBanned }).eq('id', userId);
-          fetchUsers();
+  const handleToggleBan = async (userId: string, currentlyBanned: boolean) => {
+    const action = currentlyBanned ? 'Unban' : 'Ban';
+    const newBanState = !currentlyBanned;
+
+    Alert.alert(
+      `${action} User`,
+      `Are you sure you want to ${action.toLowerCase()} this user?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: action,
+          style: currentlyBanned ? 'default' : 'destructive',
+          onPress: async () => {
+            const { error } = await supabase
+              .from('profiles')
+              .update({ is_banned: newBanState })
+              .eq('id', userId);
+
+            if (error) {
+              console.error('Ban error:', error.message);
+              Alert.alert('Error', `Could not ${action.toLowerCase()} user: ${error.message}`);
+              return;
+            }
+
+            console.log(`✅ User ${userId} is_banned set to ${newBanState}`);
+            // Refresh users list to show updated state
+            await fetchUsers();
+          },
         },
+      ],
+    );
+  };
+
+  const handleDeleteListing = async (reportedUserId: string, reportId: string) => {
+    const { data: items } = await supabase
+      .from('items')
+      .select('id, title')
+      .eq('user_id', reportedUserId)
+      .eq('status', 'available');
+
+    if (!items || items.length === 0) {
+      Alert.alert('No Listings', 'This user has no active listings to delete.');
+      return;
+    }
+
+    const buttons = items.map((item: any) => ({
+      text: item.title,
+      onPress: () => {
+        Alert.alert('Delete Listing', `Delete "${item.title}"?`, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              await supabase.from('items').delete().eq('id', item.id);
+              await supabase.from('notifications').insert({
+                user_id: reportedUserId,
+                type: 'admin',
+                title: '⚠️ Listing Removed',
+                body: `Your listing "${item.title}" was removed by an admin for violating community guidelines.`,
+              });
+              await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId);
+              Alert.alert('Done', 'Listing deleted and user notified.');
+              fetchAll();
+            },
+          },
+        ]);
       },
-    ]);
+    }));
+
+    Alert.alert(
+      'Select Listing to Delete',
+      `${items.length} active listing(s) found`,
+      [...buttons, { text: 'Cancel', style: 'cancel' as const }],
+    );
   };
 
   const STAT_CARDS = [
-    { label: 'Total Users',     value: analytics.totalUsers,    icon: 'people',           color: '#3B82F6' },
-    { label: 'Total Listings',  value: analytics.totalListings,  icon: 'cube',             color: '#10B981' },
-    { label: 'Completed Trades',value: analytics.totalTrades,   icon: 'swap-horizontal',  color: '#8B5CF6' },
-    { label: 'Pending Reports', value: analytics.pendingReports, icon: 'flag',             color: '#EF4444' },
+    { label: 'Total Users',      value: analytics.totalUsers,    icon: 'people',          color: '#3B82F6' },
+    { label: 'Total Listings',   value: analytics.totalListings, icon: 'cube',            color: '#10B981' },
+    { label: 'Completed Trades', value: analytics.totalTrades,   icon: 'swap-horizontal', color: '#8B5CF6' },
+    { label: 'Pending Reports',  value: analytics.pendingReports, icon: 'flag',           color: '#EF4444' },
   ];
 
   const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
-    pending:   { color: Colors.warning, label: 'Pending' },
-    resolved:  { color: Colors.success, label: 'Resolved' },
+    pending:   { color: Colors.warning,   label: 'Pending' },
+    resolved:  { color: Colors.success,   label: 'Resolved' },
     dismissed: { color: Colors.textLight, label: 'Dismissed' },
   };
 
@@ -190,7 +239,6 @@ export default function AdminScreen() {
             />
           }
         >
-
           {/* ── Analytics Tab ── */}
           {tab === 'analytics' && (
             <View style={styles.tabContent}>
@@ -205,8 +253,6 @@ export default function AdminScreen() {
                   </View>
                 ))}
               </View>
-
-              {/* Summary card */}
               <View style={[styles.summaryCard, { backgroundColor: theme.surface }]}>
                 <Text style={[styles.summaryTitle, { color: theme.text }]}>Platform Summary</Text>
                 {[
@@ -237,8 +283,6 @@ export default function AdminScreen() {
                   const sc = STATUS_CONFIG[report.status] || STATUS_CONFIG.pending;
                   return (
                     <View key={report.id} style={[styles.reportCard, { backgroundColor: theme.surface }]}>
-
-                      {/* Status + date */}
                       <View style={styles.reportTopRow}>
                         <View style={[styles.statusPill, { backgroundColor: sc.color + '18' }]}>
                           <Text style={[styles.statusPillText, { color: sc.color }]}>{sc.label}</Text>
@@ -248,7 +292,6 @@ export default function AdminScreen() {
                         </Text>
                       </View>
 
-                      {/* Reporter → Reported */}
                       <View style={styles.reportParties}>
                         <View style={styles.partyBox}>
                           <Text style={[styles.partyRole, { color: theme.textLight }]}>Reporter</Text>
@@ -257,14 +300,10 @@ export default function AdminScreen() {
                               <Image source={{ uri: report.reporter.avatar_url }} style={styles.partyAvatar} />
                             ) : (
                               <View style={[styles.partyAvatarFallback, { backgroundColor: Colors.primary }]}>
-                                <Text style={styles.partyAvatarText}>
-                                  {(report.reporter?.full_name || 'U')[0].toUpperCase()}
-                                </Text>
+                                <Text style={styles.partyAvatarText}>{(report.reporter?.full_name || 'U')[0].toUpperCase()}</Text>
                               </View>
                             )}
-                            <Text style={[styles.partyName, { color: theme.text }]} numberOfLines={1}>
-                              {report.reporter?.full_name}
-                            </Text>
+                            <Text style={[styles.partyName, { color: theme.text }]} numberOfLines={1}>{report.reporter?.full_name}</Text>
                           </View>
                         </View>
 
@@ -277,19 +316,14 @@ export default function AdminScreen() {
                               <Image source={{ uri: report.reported.avatar_url }} style={styles.partyAvatar} />
                             ) : (
                               <View style={[styles.partyAvatarFallback, { backgroundColor: Colors.error }]}>
-                                <Text style={styles.partyAvatarText}>
-                                  {(report.reported?.full_name || 'U')[0].toUpperCase()}
-                                </Text>
+                                <Text style={styles.partyAvatarText}>{(report.reported?.full_name || 'U')[0].toUpperCase()}</Text>
                               </View>
                             )}
-                            <Text style={[styles.partyName, { color: theme.text }]} numberOfLines={1}>
-                              {report.reported?.full_name}
-                            </Text>
+                            <Text style={[styles.partyName, { color: theme.text }]} numberOfLines={1}>{report.reported?.full_name}</Text>
                           </View>
                         </View>
                       </View>
 
-                      {/* Reason */}
                       <View style={[styles.reasonBox, { backgroundColor: theme.background }]}>
                         <Text style={[styles.reasonLabel, { color: theme.textLight }]}>Reason</Text>
                         <Text style={[styles.reasonText, { color: theme.text }]}>{report.reason}</Text>
@@ -298,7 +332,6 @@ export default function AdminScreen() {
                         ) : null}
                       </View>
 
-                      {/* Actions — only for pending */}
                       {report.status === 'pending' && (
                         <View style={styles.reportActions}>
                           <TouchableOpacity
@@ -321,6 +354,13 @@ export default function AdminScreen() {
                           >
                             <Ionicons name="ban" size={15} color={Colors.error} />
                             <Text style={[styles.actionBtnText, { color: Colors.error }]}>Ban User</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.actionBtn, { backgroundColor: Colors.warning + '18', borderColor: Colors.warning }]}
+                            onPress={() => handleDeleteListing(report.reported_user_id, report.id)}
+                          >
+                            <Ionicons name="trash" size={15} color={Colors.warning} />
+                            <Text style={[styles.actionBtnText, { color: Colors.warning }]}>Del. Listing</Text>
                           </TouchableOpacity>
                         </View>
                       )}
@@ -405,11 +445,7 @@ export default function AdminScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingTop: Platform.OS === 'ios' ? 56 : 20,
-    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: Platform.OS === 'ios' ? 56 : 20, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: FontSize.lg, fontWeight: '800' },
   headerSub: { fontSize: FontSize.xs, marginTop: 1 },
@@ -422,8 +458,6 @@ const styles = StyleSheet.create({
   tabBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   body: { padding: Spacing.lg },
   tabContent: { gap: 12 },
-
-  // Analytics
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   statCard: { width: '47%', borderRadius: BorderRadius.xl, padding: Spacing.md, alignItems: 'flex-start', gap: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
   statIconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
@@ -434,8 +468,6 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1 },
   summaryLabel: { fontSize: FontSize.sm },
   summaryValue: { fontSize: FontSize.sm, fontWeight: '700' },
-
-  // Reports
   reportCard: { borderRadius: BorderRadius.xl, padding: Spacing.md, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
   reportTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: BorderRadius.full },
@@ -453,11 +485,9 @@ const styles = StyleSheet.create({
   reasonLabel: { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   reasonText: { fontSize: FontSize.sm, fontWeight: '700' },
   reasonDetails: { fontSize: FontSize.xs, marginTop: 2 },
-  reportActions: { flexDirection: 'row', gap: 8 },
+  reportActions: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, borderRadius: BorderRadius.md, borderWidth: 1.5 },
   actionBtnText: { fontSize: FontSize.xs, fontWeight: '700' },
-
-  // Users
   userCount: { fontSize: FontSize.sm, marginBottom: 4 },
   userCard: { flexDirection: 'row', alignItems: 'center', borderRadius: BorderRadius.xl, padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
   userAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl, Image, Platform, Alert,
+  ActivityIndicator, RefreshControl, Image, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -21,7 +21,7 @@ type Notif = {
   avatarInitial: string;
   payload: any;
   read: boolean;
-  rawId?: string; // actual DB id for admin notifs
+  rawId?: string;
 };
 
 function timeAgo(dateStr: string): string {
@@ -86,11 +86,11 @@ export default function NotificationsScreen() {
       });
     }
 
-    // Messages received
+    // Messages received — now includes read column
     const { data: messages } = await supabase
       .from('messages')
       .select(`
-        id, content, created_at,
+        id, content, created_at, read,
         sender:profiles!sender_id(id, full_name, avatar_url),
         offer:offers(id,
           offered_item:items!offered_item_id(title),
@@ -112,7 +112,7 @@ export default function NotificationsScreen() {
           avatar: m.sender?.avatar_url,
           avatarInitial: (m.sender?.full_name || 'U')[0].toUpperCase(),
           payload: m,
-          read: false,
+          read: m.read === true,
         });
       });
     }
@@ -175,7 +175,6 @@ export default function NotificationsScreen() {
 
   useEffect(() => { if (userId) fetchNotifs(); }, [userId, fetchNotifs]);
 
-  // Mark admin notification as read in DB
   const markAdminRead = async (rawId: string) => {
     await supabase
       .from('notifications')
@@ -185,9 +184,7 @@ export default function NotificationsScreen() {
 
   const handlePress = async (notif: Notif) => {
     // Mark as read locally immediately
-    setNotifs(prev =>
-      prev.map(n => n.id === notif.id ? { ...n, read: true } : n)
-    );
+    setNotifs(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
 
     // Persist read state for admin notifs
     if (notif.type === 'admin' && notif.rawId && !notif.read) {
@@ -201,7 +198,6 @@ export default function NotificationsScreen() {
       const m = notif.payload;
       if (m.offer?.id) navigation.navigate('Chat', { offer: m.offer });
     }
-    // admin type: no navigation, just marks read
   };
 
   const iconConfig = (type: NotifType, read: boolean) => {

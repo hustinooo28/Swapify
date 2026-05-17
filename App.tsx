@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Ionicons } from '@expo/vector-icons';
 
-import { useAuthState, AuthContext } from './src/hooks/useAuth';
+import { useAuthState, AuthContext, useAuth } from './src/hooks/useAuth';
 import AppNavigator from './src/navigation/AppNavigator';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
@@ -18,7 +19,7 @@ import { supabase } from './src/lib/supabase';
 type AuthStep = 'login' | 'register' | 'otp' | 'biometric' | 'app';
 
 function Main() {
-  const auth = useAuthState();
+  const auth = useAuth();
   const { isDark, theme } = useTheme();
   const [step, setStep] = useState<AuthStep>('login');
   const [pendingEmail, setPendingEmail] = useState('');
@@ -50,7 +51,6 @@ function Main() {
     setCheckingBio(false);
   };
 
-  // Upload avatar after OTP verification — user is now authenticated
   const uploadAvatarAfterVerification = async (userId: string, localUri: string) => {
     try {
       const ext = (localUri.split('.').pop() || 'jpg').split('?')[0];
@@ -71,24 +71,43 @@ function Main() {
     }
   };
 
-const handleOTPVerified = async () => {
-  // Upload avatar now that the user is authenticated
-  if (pendingAvatarUri && pendingUserId) {
-    await uploadAvatarAfterVerification(pendingUserId, pendingAvatarUri);
-  }
-  // Clear pending state
-  setPendingAvatarUri(null);
-  setPendingUserId(null);
-  // Don't go to 'login' — session is already active after OTP.
-  // Check biometrics and go straight to app.
-  setBioChecked(true);
-  checkBiometricGate();
-};
+  const handleOTPVerified = async () => {
+    if (pendingAvatarUri && pendingUserId) {
+      await uploadAvatarAfterVerification(pendingUserId, pendingAvatarUri);
+    }
+    setPendingAvatarUri(null);
+    setPendingUserId(null);
+    setBioChecked(true);
+    checkBiometricGate();
+  };
 
   if (auth.loading || checkingBio) {
     return (
-      <View style={[styles.loading, { backgroundColor: theme.background }]}>
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
         <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  // ── Banned user ──
+  if (auth.isBanned) {
+    return (
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <Ionicons name="ban" size={72} color={Colors.error} />
+        <Text style={[styles.bannedTitle, { color: theme.text }]}>
+          Account Suspended
+        </Text>
+        <Text style={[styles.bannedSub, { color: theme.textSecondary }]}>
+          Your account has been suspended for violating our community guidelines.
+          Please contact support if you believe this is a mistake.
+        </Text>
+        <TouchableOpacity
+          style={styles.bannedBtn}
+          onPress={async () => { await auth.signOut(); }}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.bannedBtnText}>Back to Login</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -143,7 +162,7 @@ const handleOTPVerified = async () => {
   }
 
   return (
-    <View style={[styles.loading, { backgroundColor: theme.background }]}>
+    <View style={[styles.center, { backgroundColor: theme.background }]}>
       <ActivityIndicator size="large" color={Colors.primary} />
     </View>
   );
@@ -163,5 +182,40 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  bannedTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 20,
+    textAlign: 'center',
+  },
+  bannedSub: {
+    fontSize: 14,
+    marginTop: 10,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+  bannedBtn: {
+    marginTop: 24,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 36,
+    paddingVertical: 14,
+    borderRadius: 999,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  bannedBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
 });

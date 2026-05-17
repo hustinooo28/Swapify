@@ -13,14 +13,15 @@ import { useTheme } from '../lib/ThemeContext';
 type Message = {
   id: string;
   sender_id: string;
+  receiver_id?: string;
   content: string;
   created_at: string;
   conversation_id?: string;
   offer_id?: string;
+  read?: boolean;
   sender?: { full_name: string };
 };
 
-// Extra bottom padding so floating nav never covers the input
 const NAV_HEIGHT = Platform.OS === 'ios' ? 100 : 88;
 
 export default function ChatScreen() {
@@ -59,7 +60,6 @@ export default function ChatScreen() {
     }
   }, []);
 
-  // Track keyboard height to push input above nav + keyboard
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardWillShow', (e) => {
       setKeyboardHeight(e.endCoordinates.height);
@@ -67,14 +67,14 @@ export default function ChatScreen() {
     const hideSub = Keyboard.addListener('keyboardWillHide', () => {
       setKeyboardHeight(0);
     });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
+    return () => { showSub.remove(); hideSub.remove(); };
   }, []);
 
   useEffect(() => {
+    if (!userId) return;
     fetchMessages();
+    markMessagesAsRead();
+
     const channelId = isOfferChat ? `offer_${offer.id}` : `conv_${conversationId}`;
     const filter = isOfferChat
       ? `offer_id=eq.${offer.id}`
@@ -88,13 +88,14 @@ export default function ChatScreen() {
         table: 'messages',
         filter,
       }, (payload) => {
-  setMessages(prev => {
-    const newMsg = payload.new as Message;
-    // Prevent duplicate if message already exists from fetchMessages
-    if (prev.some(m => m.id === newMsg.id)) return prev;
-    return [...prev, newMsg];
-  });
+        setMessages(prev => {
+          const newMsg = payload.new as Message;
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        // Mark as read immediately when new message arrives while chat is open
+        markMessagesAsRead();
       })
       .subscribe();
 
@@ -116,6 +117,21 @@ export default function ChatScreen() {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 150);
   };
 
+  // Mark all messages in this chat sent to current user as read
+  const markMessagesAsRead = async () => {
+    if (!userId) return;
+    let query = supabase
+      .from('messages')
+      .update({ read: true })
+      .eq('receiver_id', userId)
+      .eq('read', false);
+
+    if (isOfferChat) query = query.eq('offer_id', offer.id);
+    else query = query.eq('conversation_id', conversationId);
+
+    await query;
+  };
+
   const sendMessage = async () => {
     if (!text.trim() || !userId) return;
     const content = text.trim();
@@ -124,6 +140,9 @@ export default function ChatScreen() {
     const payload: any = { sender_id: userId, content };
     if (isOfferChat) {
       payload.offer_id = offer.id;
+      // For offer chats, receiver is the other party
+      const receiverId = offer.sender_id === userId ? offer.receiver_id : offer.sender_id;
+      payload.receiver_id = receiverId;
     } else {
       payload.conversation_id = conversationId;
       payload.receiver_id = otherUserId;
@@ -160,30 +179,30 @@ export default function ChatScreen() {
               {msg.content}
             </Text>
           </View>
-          <Text style={[
-            styles.timeText,
-            { color: theme.textLight, textAlign: isMe ? 'right' : 'left' },
-          ]}>
-            {new Date(msg.created_at).toLocaleTimeString([], {
-              hour: '2-digit', minute: '2-digit',
-            })}
-          </Text>
+          <View style={[styles.timeRow, { justifyContent: isMe ? 'flex-end' : 'flex-start' }]}>
+            <Text style={[styles.timeText, { color: theme.textLight }]}>
+              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+            {/* Read receipt — only show for messages I sent */}
+            {isMe && (
+              <Ionicons
+                name={msg.read ? 'checkmark-done' : 'checkmark'}
+                size={12}
+                color={msg.read ? Colors.primary : theme.textLight}
+              />
+            )}
+          </View>
         </View>
       </View>
     );
   };
 
-  // Bottom padding = nav height when keyboard is hidden,
-  // nothing extra when keyboard is shown (KAV handles it)
   const listBottomPad = keyboardHeight > 0 ? 16 : NAV_HEIGHT + 8;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Header — sits outside KAV so it never moves */}
-      <View style={[styles.header, {
-        backgroundColor: theme.surface,
-        borderBottomColor: theme.border,
-      }]}>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={theme.text} />
         </TouchableOpacity>
@@ -204,13 +223,10 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      {/* KAV only wraps messages + input */}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        {/* Messages */}
         {loading ? (
           <View style={styles.center}>
             <ActivityIndicator color={Colors.primary} />
@@ -221,23 +237,16 @@ export default function ChatScreen() {
             data={messages}
             keyExtractor={(m) => m.id}
             renderItem={renderMessage}
-            contentContainerStyle={[
-              styles.msgList,
-              { paddingBottom: listBottomPad },
-            ]}
+            contentContainerStyle={[styles.msgList, { paddingBottom: listBottomPad }]}
             showsVerticalScrollIndicator={false}
-            onContentSizeChange={() =>
-              flatListRef.current?.scrollToEnd({ animated: true })
-            }
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             keyboardDismissMode="on-drag"
             ListEmptyComponent={
               <View style={styles.empty}>
                 <View style={[styles.emptyIcon, { backgroundColor: Colors.primaryLight }]}>
                   <Ionicons name="chatbubbles-outline" size={32} color={Colors.primary} />
                 </View>
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>
-                  No messages yet
-                </Text>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>No messages yet</Text>
                 <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
                   Say hello and start negotiating!
                 </Text>
@@ -246,16 +255,12 @@ export default function ChatScreen() {
           />
         )}
 
-        {/* Input bar — sticks above keyboard */}
         <View style={[styles.inputBar, {
           backgroundColor: theme.surface,
           borderTopColor: theme.border,
-          // When keyboard hidden, lift input above floating nav
           paddingBottom: keyboardHeight > 0
             ? Spacing.sm
-            : Platform.OS === 'ios'
-            ? NAV_HEIGHT - 50
-            : NAV_HEIGHT - 55,
+            : Platform.OS === 'ios' ? NAV_HEIGHT - 50 : NAV_HEIGHT - 55,
         }]}>
           <TextInput
             style={[styles.input, {
@@ -286,23 +291,10 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: Platform.OS === 'ios' ? 52 : 16,
-    paddingBottom: 12,
-    paddingHorizontal: Spacing.lg,
-    borderBottomWidth: 1,
-    gap: 12,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 52 : 16, paddingBottom: 12, paddingHorizontal: Spacing.lg, borderBottomWidth: 1, gap: 12 },
   backBtn: { padding: 4 },
   headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerAvatar: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
+  headerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   headerAvatarText: { color: '#fff', fontWeight: '800', fontSize: FontSize.sm },
   headerTitle: { fontSize: FontSize.md, fontWeight: '700' },
   headerSub: { fontSize: FontSize.xs, marginTop: 1 },
@@ -311,53 +303,21 @@ const styles = StyleSheet.create({
   msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   msgRowRight: { justifyContent: 'flex-end' },
   msgRowLeft: { justifyContent: 'flex-start' },
-  avatar: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
+  avatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   avatarText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   senderName: { fontSize: 10, fontWeight: '600', marginBottom: 3, marginLeft: 2 },
   bubble: { maxWidth: 260, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
   bubbleMe: { backgroundColor: Colors.primary, borderBottomRightRadius: 4 },
   bubbleThem: { borderBottomLeftRadius: 4, borderWidth: 1 },
   bubbleText: { fontSize: FontSize.sm, lineHeight: 20 },
-  timeText: { fontSize: 10, marginTop: 4, marginHorizontal: 4 },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4, marginHorizontal: 4 },
+  timeText: { fontSize: 10 },
   empty: { alignItems: 'center', paddingTop: 80 },
-  emptyIcon: {
-    width: 72, height: 72, borderRadius: 36,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-  },
+  emptyIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700' },
   emptySub: { fontSize: FontSize.sm, marginTop: 4 },
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
-    borderTopWidth: 1,
-    gap: 10,
-  },
-  input: {
-    flex: 1,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: FontSize.sm,
-    maxHeight: 100,
-    borderWidth: 1,
-  },
-  sendBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-    flexShrink: 0,
-  },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, borderTopWidth: 1, gap: 10 },
+  input: { flex: 1, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, fontSize: FontSize.sm, maxHeight: 100, borderWidth: 1 },
+  sendBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: Colors.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4, flexShrink: 0 },
   sendBtnOff: { opacity: 0.4, shadowOpacity: 0 },
 });
