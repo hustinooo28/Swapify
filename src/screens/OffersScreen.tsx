@@ -37,17 +37,21 @@ export default function OffersScreen() {
   const fetchOffers = useCallback(async () => {
     if (!userId) return;
     const field = tab === 'received' ? 'receiver_id' : 'sender_id';
+    const deletedField = tab === 'received' ? 'deleted_by_receiver' : 'deleted_by_sender';
+
     const { data, error } = await supabase
       .from('offers')
       .select(`
         *,
         offered_item:items!offered_item_id(id, title, image_url, estimated_value),
         requested_item:items!requested_item_id(id, title, image_url, estimated_value),
-        sender:profiles!sender_id(id, full_name),
-        receiver:profiles!receiver_id(id, full_name)
+        sender:profiles!sender_id(id, full_name, avatar_url),
+        receiver:profiles!receiver_id(id, full_name, avatar_url)
       `)
       .eq(field, userId)
+      .eq(deletedField, false)
       .order('created_at', { ascending: false });
+
     if (!error && data) setOffers(data as Offer[]);
     setLoading(false);
     setRefreshing(false);
@@ -79,19 +83,29 @@ export default function OffersScreen() {
     fetchOffers();
   };
 
-  const handleDelete = (offerId: string) => {
+  const handleDelete = async (offerId: string) => {
+    const offer = offers.find(o => o.id === offerId);
+    if (!offer) return;
+
     Alert.alert(
-      'Delete Conversation',
-      'This will delete the offer and all its messages. This cannot be undone.',
+      'Leave Conversation',
+      'You will no longer be able to send messages. The other user will see that you left.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Leave',
           style: 'destructive',
           onPress: async () => {
-            // Delete messages first (foreign key), then the offer
-            await supabase.from('messages').delete().eq('offer_id', offerId);
-            await supabase.from('offers').delete().eq('id', offerId);
+            const iAmSender = offer.sender_id === userId;
+            const updateField = iAmSender
+              ? { deleted_by_sender: true }
+              : { deleted_by_receiver: true };
+
+            await supabase
+              .from('offers')
+              .update(updateField)
+              .eq('id', offerId);
+
             setOffers(prev => prev.filter(o => o.id !== offerId));
           },
         },
@@ -101,29 +115,44 @@ export default function OffersScreen() {
 
   const renderOffer = ({ item: offer }: { item: Offer }) => {
     const sc = STATUS_CONFIG[offer.status] || STATUS_CONFIG.pending;
-    const partyName = tab === 'received'
-      ? offer.sender?.full_name
-      : offer.receiver?.full_name;
+    const iAmSender = offer.sender_id === userId;
+    const otherParty = iAmSender ? offer.receiver : offer.sender;
+    const partyLabel = tab === 'received' ? `From ${offer.sender?.full_name}` : `To ${offer.receiver?.full_name}`;
+    const otherPartyId = iAmSender ? offer.receiver_id : offer.sender_id;
 
     return (
       <View style={[styles.card, { backgroundColor: theme.card }]}>
 
         {/* Top row: avatar + name + status + date */}
         <View style={styles.cardTop}>
-          <View style={styles.partyAvatar}>
-            <Text style={styles.partyAvatarText}>
-              {(partyName || 'U')[0].toUpperCase()}
-            </Text>
-          </View>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('SellerProfile', { sellerId: otherPartyId })}
+            activeOpacity={0.8}
+          >
+            {(otherParty as any)?.avatar_url ? (
+              <Image
+                source={{ uri: (otherParty as any).avatar_url }}
+                style={styles.partyAvatarImg}
+              />
+            ) : (
+              <View style={styles.partyAvatar}>
+                <Text style={styles.partyAvatarText}>
+                  {(otherParty?.full_name || 'U')[0].toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
           <View style={styles.partyInfo}>
             <Text style={[styles.partyName, { color: theme.text }]} numberOfLines={1}>
-              {tab === 'received' ? `From ${partyName}` : `To ${partyName}`}
+              {partyLabel}
             </Text>
             <View style={[styles.statusPill, { backgroundColor: sc.color + '18' }]}>
               <Ionicons name={sc.icon as any} size={10} color={sc.color} />
               <Text style={[styles.statusPillText, { color: sc.color }]}>{sc.label}</Text>
             </View>
           </View>
+
           <Text style={[styles.dateText, { color: theme.textLight }]}>
             {new Date(offer.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </Text>
@@ -159,7 +188,6 @@ export default function OffersScreen() {
 
         {/* Actions row */}
         <View style={[styles.actionsRow, { borderTopColor: theme.border }]}>
-          {/* Chat button */}
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: Colors.primaryLight }]}
             onPress={() => navigation.navigate('Chat', { offer })}
@@ -168,7 +196,6 @@ export default function OffersScreen() {
             <Text style={[styles.actionBtnText, { color: Colors.primary }]}>Chat</Text>
           </TouchableOpacity>
 
-          {/* Accept / Decline — only for received pending */}
           {tab === 'received' && offer.status === 'pending' && (
             <>
               <TouchableOpacity
@@ -194,12 +221,14 @@ export default function OffersScreen() {
             </>
           )}
 
-          {/* Delete conversation */}
+          {/* Spacer to push trash to right */}
+          <View style={{ flex: 1 }} />
+
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: theme.background }]}
             onPress={() => handleDelete(offer.id)}
           >
-            <Ionicons name="trash-outline" size={14} color={theme.textLight} />
+            <Ionicons name="exit-outline" size={14} color={theme.textLight} />
           </TouchableOpacity>
         </View>
       </View>
@@ -275,21 +304,16 @@ const styles = StyleSheet.create({
   tabBtnActive: { backgroundColor: Colors.primary },
   tabBtnText: { fontSize: FontSize.sm, fontWeight: '700' },
   list: { padding: Spacing.lg, gap: 10, paddingBottom: 120 },
-
-  // Card
   card: { borderRadius: BorderRadius.xl, padding: Spacing.md, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-
-  // Top row
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: Spacing.sm },
-  partyAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  partyAvatarText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  partyAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  partyAvatarImg: { width: 38, height: 38, borderRadius: 19, flexShrink: 0 },
+  partyAvatarText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   partyInfo: { flex: 1, gap: 3 },
   partyName: { fontSize: FontSize.sm, fontWeight: '700' },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', paddingHorizontal: 7, paddingVertical: 2, borderRadius: BorderRadius.full },
   statusPillText: { fontSize: 10, fontWeight: '700' },
   dateText: { fontSize: FontSize.xs, flexShrink: 0 },
-
-  // Compact swap row
   swapRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: Spacing.sm },
   thumbImg: { width: 48, height: 48, borderRadius: BorderRadius.md, flexShrink: 0 },
   swapMid: { flex: 1, gap: 3 },
@@ -297,13 +321,9 @@ const styles = StyleSheet.create({
   swapArrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cashBadge: { backgroundColor: Colors.success + '20', paddingHorizontal: 6, paddingVertical: 1, borderRadius: BorderRadius.full },
   cashBadgeText: { fontSize: 9, color: Colors.success, fontWeight: '800' },
-
-  // Actions
   actionsRow: { flexDirection: 'row', gap: 6, borderTopWidth: 1, paddingTop: Spacing.sm, marginTop: 4, alignItems: 'center' },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: BorderRadius.full },
   actionBtnText: { fontSize: FontSize.xs, fontWeight: '700' },
-
-  // Empty + misc
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 },
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700', marginTop: 16 },
