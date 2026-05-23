@@ -86,7 +86,8 @@ const fetchUnread = async (userId: string) => {
     supabase
       .from('messages')
       .select('id', { count: 'exact', head: true })
-      .eq('receiver_id', userId),
+      .eq('receiver_id', userId)
+      .eq('read', false),
     supabase
       .from('notifications')
       .select('id', { count: 'exact', head: true })

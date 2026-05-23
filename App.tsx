@@ -39,17 +39,24 @@ function Main() {
     }
   }, [auth.session, auth.loading]);
 
-  const checkBiometricGate = async () => {
-    setCheckingBio(true);
-    try {
-      const enabled = await getBiometricsEnabled();
-      const available = await isBiometricsAvailable();
-      setStep(enabled && available ? 'biometric' : 'app');
-    } catch {
-      setStep('app');
-    }
-    setCheckingBio(false);
-  };
+const checkBiometricGate = async () => {
+  setCheckingBio(true);
+  try {
+    // Timeout after 3 seconds — if biometric check hangs, just go to app
+    const result = await Promise.race([
+      (async () => {
+        const enabled = await getBiometricsEnabled();
+        const available = await isBiometricsAvailable();
+        return enabled && available ? 'biometric' : 'app';
+      })(),
+      new Promise<'app'>((resolve) => setTimeout(() => resolve('app'), 3000)),
+    ]);
+    setStep(result);
+  } catch {
+    setStep('app');
+  }
+  setCheckingBio(false);
+};
 
   const uploadAvatarAfterVerification = async (userId: string, localUri: string) => {
     try {
