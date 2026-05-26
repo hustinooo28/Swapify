@@ -5,7 +5,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Item } from '../types';
 import { Colors, Spacing, BorderRadius, FontSize } from '../lib/theme';
@@ -35,6 +35,7 @@ export default function HomeScreen() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [profile, setProfile] = useState<any>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -44,68 +45,75 @@ export default function HomeScreen() {
   const loadProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setUserId(user.id);
+
     const { data } = await supabase
       .from('profiles')
       .select('full_name, avatar_url')
       .eq('id', user.id)
       .single();
     if (data) setProfile(data);
+
     fetchUnread(user.id);
 
-    // Realtime subscription for notifications
-supabase
-  .channel(`home_notifs_${user.id}`)
-  .on('postgres_changes', {
-    event: 'INSERT',
-    schema: 'public',
-    table: 'offers',
-    filter: `receiver_id=eq.${user.id}`,
-  }, () => fetchUnread(user.id))
-  .on('postgres_changes', {
-    event: 'INSERT',
-    schema: 'public',
-    table: 'messages',
-    filter: `receiver_id=eq.${user.id}`,
-  }, () => fetchUnread(user.id))
-  .on('postgres_changes', {
-    event: 'INSERT',
-    schema: 'public',
-    table: 'notifications',
-    filter: `user_id=eq.${user.id}`,
-  }, () => fetchUnread(user.id))
-  .subscribe();
+    // Realtime — badge goes UP instantly when new items arrive
+    supabase
+      .channel(`home_notifs_${user.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'offers',
+        filter: `receiver_id=eq.${user.id}`,
+      }, () => fetchUnread(user.id))
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `receiver_id=eq.${user.id}`,
+      }, () => fetchUnread(user.id))
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${user.id}`,
+      }, () => fetchUnread(user.id))
+      .subscribe();
   };
 
-const fetchUnread = async (userId: string) => {
-  const [{ count: offerCount }, { count: msgCount }, { count: notifCount }] = await Promise.all([
-    supabase
-      .from('offers')
-      .select('id', { count: 'exact', head: true })
-      .eq('receiver_id', userId)
-      .eq('status', 'pending'),
-    supabase
-      .from('messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('receiver_id', userId)
-      .eq('read', false),
-    supabase
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('read', false),
-  ]);
+  const fetchUnread = async (uid: string) => {
+    const [{ count: offerCount }, { count: msgCount }, { count: notifCount }] = await Promise.all([
+      supabase
+        .from('offers')
+        .select('id', { count: 'exact', head: true })
+        .eq('receiver_id', uid)
+        .eq('status', 'pending'),
+      supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('receiver_id', uid)
+        .eq('read', false),
+      supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', uid)
+        .eq('read', false),
+    ]);
+    setUnreadCount((offerCount || 0) + (msgCount || 0) + (notifCount || 0));
+  };
 
-  setUnreadCount((offerCount || 0) + (msgCount || 0) + (notifCount || 0));
-};
+  // Re-fetch unread count every time Home comes back into focus
+  // This makes the badge drop after user reads notifications/messages
+  useFocusEffect(
+    useCallback(() => {
+      if (userId) fetchUnread(userId);
+    }, [userId])
+  );
 
   const fetchItems = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     let query = supabase
       .from('items')
-      .select(`
-        *,
-        user:profiles(id, full_name, avatar_url)
-      `)
+      .select(`*, user:profiles(id, full_name, avatar_url)`)
       .eq('status', 'available')
       .order('created_at', { ascending: false });
 
@@ -147,13 +155,9 @@ const fetchUnread = async (userId: string) => {
           {item.description}
         </Text>
         <View style={styles.cardFooter}>
-          {/* Seller avatar + name */}
           <View style={styles.listerRow}>
             {item.user?.avatar_url ? (
-              <Image
-                source={{ uri: item.user.avatar_url }}
-                style={styles.avatarImg}
-              />
+              <Image source={{ uri: item.user.avatar_url }} style={styles.avatarImg} />
             ) : (
               <View style={styles.avatarTiny}>
                 <Text style={styles.avatarTinyText}>
@@ -197,12 +201,8 @@ const fetchUnread = async (userId: string) => {
             <View style={[styles.header, { backgroundColor: theme.surface }]}>
               <View style={styles.headerTop}>
                 <View style={styles.headerLeft}>
-                  {/* Current user avatar */}
                   {profile?.avatar_url ? (
-                    <Image
-                      source={{ uri: profile.avatar_url }}
-                      style={styles.headerAvatar}
-                    />
+                    <Image source={{ uri: profile.avatar_url }} style={styles.headerAvatar} />
                   ) : (
                     <View style={[styles.headerAvatarFallback, { backgroundColor: Colors.primary }]}>
                       <Text style={styles.headerAvatarText}>
@@ -220,7 +220,6 @@ const fetchUnread = async (userId: string) => {
                   </View>
                 </View>
 
-                {/* Notification bell with badge */}
                 <TouchableOpacity
                   style={[styles.notifBtn, { backgroundColor: theme.background }]}
                   onPress={() => navigation.navigate('Notifications')}
@@ -237,10 +236,7 @@ const fetchUnread = async (userId: string) => {
               </View>
 
               {/* Search */}
-              <View style={[styles.searchBar, {
-                backgroundColor: theme.background,
-                borderColor: theme.border,
-              }]}>
+              <View style={[styles.searchBar, { backgroundColor: theme.background, borderColor: theme.border }]}>
                 <Ionicons name="search-outline" size={18} color={theme.textLight} />
                 <TextInput
                   style={[styles.searchInput, { color: theme.text }]}
@@ -367,107 +363,50 @@ const fetchUnread = async (userId: string) => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingTop: 56, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
-  headerTop: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: Spacing.md,
-  },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerAvatar: { width: 44, height: 44, borderRadius: 22 },
-  headerAvatarFallback: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  headerAvatarFallback: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   headerAvatarText: { color: '#fff', fontWeight: '800', fontSize: FontSize.md },
   hiText: { fontSize: FontSize.xs, fontWeight: '500' },
   headerTitle: { fontSize: FontSize.xl, fontWeight: '800', letterSpacing: -0.3 },
-  notifBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
-    position: 'relative',
-  },
-  badge: {
-    position: 'absolute', top: 6, right: 6,
-    backgroundColor: Colors.error,
-    borderRadius: 8, minWidth: 16, height: 16,
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 3,
-    borderWidth: 1.5, borderColor: '#fff',
-  },
+  notifBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  badge: { position: 'absolute', top: 6, right: 6, backgroundColor: Colors.error, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, borderWidth: 1.5, borderColor: '#fff' },
   badgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
-  searchBar: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: BorderRadius.md, paddingHorizontal: 14,
-    paddingVertical: 12, gap: 10, borderWidth: 1,
-  },
+  searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: BorderRadius.md, paddingHorizontal: 14, paddingVertical: 12, gap: 10, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: FontSize.sm },
   categoriesWrapper: { paddingVertical: Spacing.md },
   categoriesScroll: { paddingHorizontal: Spacing.lg, gap: 12 },
   catItem: { alignItems: 'center', gap: 6 },
-  catIconBox: {
-    width: 60, height: 60, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  catIconBox: { width: 60, height: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   catLabel: { fontSize: FontSize.xs, textAlign: 'center' },
-  banner: {
-    marginHorizontal: Spacing.lg, marginTop: Spacing.md,
-    borderRadius: BorderRadius.xl, padding: Spacing.lg,
-    flexDirection: 'row', alignItems: 'center', overflow: 'hidden',
-  },
+  banner: { marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: BorderRadius.xl, padding: Spacing.lg, flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
   bannerLeft: { flex: 1 },
   bannerTitle: { fontSize: FontSize.xl, fontWeight: '800', lineHeight: 26, marginBottom: 4 },
   bannerSub: { fontSize: FontSize.sm, marginBottom: Spacing.md },
-  bannerBtn: {
-    backgroundColor: Colors.primary, alignSelf: 'flex-start',
-    paddingHorizontal: 20, paddingVertical: 10, borderRadius: BorderRadius.full,
-  },
+  bannerBtn: { backgroundColor: Colors.primary, alignSelf: 'flex-start', paddingHorizontal: 20, paddingVertical: 10, borderRadius: BorderRadius.full },
   bannerBtnText: { color: '#fff', fontWeight: '700', fontSize: FontSize.sm },
   bannerRight: { alignItems: 'center', justifyContent: 'center', paddingLeft: Spacing.md },
-  bannerIconCircle: {
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: Colors.primary + '20',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg, paddingBottom: Spacing.sm,
-  },
+  bannerIconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: Colors.primary + '20', alignItems: 'center', justifyContent: 'center' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
   sectionTitle: { fontSize: FontSize.lg, fontWeight: '800' },
   sectionCount: { fontSize: FontSize.sm },
   listContent: { paddingBottom: 120 },
   row: { paddingHorizontal: Spacing.lg, gap: 12 },
-  card: {
-    flex: 1, borderRadius: BorderRadius.lg, overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07, shadowRadius: 8, elevation: 3, marginBottom: 12,
-  },
+  card: { flex: 1, borderRadius: BorderRadius.lg, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3, marginBottom: 12 },
   cardImage: { width: '100%', height: 140 },
-  cardBadge: {
-    position: 'absolute', top: 8, right: 8,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: BorderRadius.full,
-  },
+  cardBadge: { position: 'absolute', top: 8, right: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: BorderRadius.full },
   cardBadgeText: { fontSize: FontSize.xs, fontWeight: '800' },
   cardBody: { padding: 10 },
   cardTitle: { fontSize: FontSize.sm, fontWeight: '700', marginBottom: 2 },
   cardDesc: { fontSize: FontSize.xs, marginBottom: 8 },
-  cardFooter: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   listerRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 },
   avatarImg: { width: 18, height: 18, borderRadius: 9 },
-  avatarTiny: {
-    width: 18, height: 18, borderRadius: 9,
-    backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  avatarTiny: { width: 18, height: 18, borderRadius: 9, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarTinyText: { color: '#fff', fontSize: 8, fontWeight: '800' },
   listerName: { fontSize: 9, flex: 1 },
-  swapChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 5, paddingVertical: 2, borderRadius: BorderRadius.full,
-  },
+  swapChip: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: Colors.primaryLight, paddingHorizontal: 5, paddingVertical: 2, borderRadius: BorderRadius.full },
   swapChipText: { fontSize: 9, color: Colors.primary, fontWeight: '700' },
   center: { alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
   empty: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 32 },
